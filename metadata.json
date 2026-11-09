@@ -1,0 +1,8 @@
+{
+  "name": "Remix Icon Dreams School and College - Smart Routine Management System",
+  "description": "Smart routine and proxy management system for Icon Dreams School and College with automated substitution, multi-format file import (PDF, Word, Excel, Image), and DOCX/PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
