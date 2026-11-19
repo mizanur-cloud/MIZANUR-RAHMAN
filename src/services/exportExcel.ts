@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { AppState } from './storage';
+import { getEffectiveSectionRequirements } from './parallelSubjects';
 
 export function exportTimetableExcel(state: AppState) {
   const { classes, subjects, teachers, settings, entries } = state;
@@ -60,7 +61,7 @@ export function exportTimetableExcel(state: AppState) {
   const classQuotaData: Record<string, string | number>[] = [];
   classes.forEach(c => {
     c.sections.forEach(s => {
-      c.subjectRequirements.forEach(req => {
+      getEffectiveSectionRequirements(c, s.id).forEach(req => {
         const sub = subjectMap.get(req.subjectId);
         const assignedPeriods = entries.filter(
           e => e.classId === c.id && e.sectionId === s.id && e.subjectId === req.subjectId

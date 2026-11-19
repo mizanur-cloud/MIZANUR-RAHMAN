@@ -1,6 +1,9 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
+import http from 'http';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +17,19 @@ const port = 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Direct APK download route with appropriate attachment headers
+app.get(['/IDSC_Routine.apk', '/api/download-apk'], (_req: Request, res: Response) => {
+  const publicApk = path.resolve(__dirname, 'public', 'IDSC_Routine.apk');
+  const distApk = path.resolve(__dirname, 'dist', 'IDSC_Routine.apk');
+  const targetApk = fs.existsSync(publicApk) ? publicApk : distApk;
+
+  if (fs.existsSync(targetApk)) {
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    return res.download(targetApk, 'IDSC_Routine.apk');
+  }
+  return res.status(404).send('APK file not found. Please refresh.');
+});
 
 // API route to parse schedule files (Image, PDF, Word text) using Gemini
 app.post('/api/parse-schedule-file', async (req: Request, res: Response) => {
@@ -107,10 +123,67 @@ Identify the class name, section, day of week, period number, subject, and teach
 });
 
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
+    // Serve a clean no-WebSocket @vite/client shim since HMR is disabled in preview environment
+    app.get('/@vite/client', (_req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.send(`
+const sheetsMap = new Map();
+export function updateStyle(id, content) {
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.setAttribute('data-vite-dev-id', id);
+    style.textContent = content;
+    document.head.appendChild(style);
+  } else {
+    style.textContent = content;
+  }
+  sheetsMap.set(id, style);
+}
+export function removeStyle(id) {
+  const style = sheetsMap.get(id);
+  if (style && style.parentNode) {
+    style.parentNode.removeChild(style);
+    sheetsMap.delete(id);
+  }
+}
+export function createHotContext() {
+  return {
+    data: {},
+    accept() {},
+    acceptExports() {},
+    dispose() {},
+    prune() {},
+    invalidate() {},
+    on() {},
+    off() {},
+    send() {},
+  };
+}
+export function injectQuery(url, queryToInject) {
+  if (url[0] !== '.' && url[0] !== '/') return url;
+  const pathname = url.replace(/[?#].*$/, '');
+  const { search, hash } = new URL(url, 'http://vite.dev');
+  return pathname + '?' + queryToInject + (search ? '&' + search.slice(1) : '') + (hash || '');
+}
+export class ErrorOverlay extends HTMLElement {}
+if (typeof customElements !== 'undefined' && !customElements.get('vite-error-overlay')) {
+  customElements.define('vite-error-overlay', ErrorOverlay);
+}
+`);
+    });
+
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        ws: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -121,7 +194,7 @@ async function startServer() {
     });
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  httpServer.listen(port, '0.0.0.0', () => {
     console.log(`Server running at http://0.0.0.0:${port}`);
   });
 }

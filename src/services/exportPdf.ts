@@ -90,11 +90,14 @@ export function exportCompleteSchoolPdf(state: AppState) {
       const body = settings.workingDays.map(day => {
         const row: string[] = [day];
         activePeriods.forEach(p => {
-          const match = secEntries.find(e => e.day === day && e.periodIndex === p.periodIndex);
-          if (match) {
-            const sub = subjectMap.get(match.subjectId);
-            const tch = teacherMap.get(match.teacherId);
-            row.push(`${sub?.name || 'Class'}\n(${tch?.initials || tch?.name || 'TBA'})`);
+          const matches = secEntries.filter(e => e.day === day && e.periodIndex === p.periodIndex);
+          if (matches.length > 0) {
+            const lines = matches.map(m => {
+              const sub = subjectMap.get(m.subjectId);
+              const tch = teacherMap.get(m.teacherId);
+              return `${sub?.name || 'Class'} (${tch?.initials || tch?.name || 'TBA'})`;
+            });
+            row.push(lines.join('\n/ '));
           } else {
             row.push('—');
           }
@@ -168,11 +171,14 @@ export function exportClassPdf(classId: string, state: AppState) {
     const body = settings.workingDays.map(day => {
       const row: string[] = [day];
       activePeriods.forEach(p => {
-        const match = secEntries.find(e => e.day === day && e.periodIndex === p.periodIndex);
-        if (match) {
-          const sub = subjectMap.get(match.subjectId);
-          const tch = teacherMap.get(match.teacherId);
-          row.push(`${sub?.name || 'Class'}\n(${tch?.name || tch?.initials || 'TBA'})`);
+        const matches = secEntries.filter(e => e.day === day && e.periodIndex === p.periodIndex);
+        if (matches.length > 0) {
+          const lines = matches.map(m => {
+            const sub = subjectMap.get(m.subjectId);
+            const tch = teacherMap.get(m.teacherId);
+            return `${sub?.name || 'Class'}\n(${tch?.name || tch?.initials || 'TBA'})`;
+          });
+          row.push(lines.join('\n—\n'));
         } else {
           row.push('—');
         }
@@ -241,11 +247,14 @@ export function exportSectionPdf(classId: string, sectionId: string, state: AppS
   const body = settings.workingDays.map(day => {
     const row: string[] = [day];
     activePeriods.forEach(p => {
-      const match = secEntries.find(e => e.day === day && e.periodIndex === p.periodIndex);
-      if (match) {
-        const sub = subjectMap.get(match.subjectId);
-        const tch = teacherMap.get(match.teacherId);
-        row.push(`${sub?.name || 'Class'}\n(${tch?.name || tch?.initials || 'TBA'})`);
+      const matches = secEntries.filter(e => e.day === day && e.periodIndex === p.periodIndex);
+      if (matches.length > 0) {
+        const lines = matches.map(m => {
+          const sub = subjectMap.get(m.subjectId);
+          const tch = teacherMap.get(m.teacherId);
+          return `${sub?.name || 'Class'}\n(${tch?.name || tch?.initials || 'TBA'})`;
+        });
+        row.push(lines.join('\n—\n'));
       } else {
         row.push('—');
       }

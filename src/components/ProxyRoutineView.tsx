@@ -4,6 +4,7 @@ import {
   ProxyAssignment,
   ProxyPlanResult,
   generateDailyProxyPlan,
+  isEligibleForProxy,
 } from '../services/proxyGenerator';
 import { exportProxyDocx, exportProxyPdf } from '../services/exportProxyDoc';
 import {
@@ -118,6 +119,19 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
             <p className="text-xs text-slate-500 mt-1">
               Select one or multiple absent teachers for any day. The system automatically assigns free teachers prioritizing same-subject specialists and department peers.
             </p>
+            <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+              <span>🛡️ প্রক্সি মুক্ত (Exempted):</span>
+              <span>
+                কো-অর্ডিনেটর, প্লে/নার্সারির ব্লক টিচার এবং মোয়াজ্জেম স্যারকে প্রক্সি ক্লাস দেওয়া যাবে না
+                {(() => {
+                  const exempted = teachers.filter(t => !isEligibleForProxy(t, classes));
+                  return exempted.length > 0
+                    ? ` (${exempted.map(t => t.initials || t.name).join(', ')})`
+                    : '';
+                })()}
+                ।
+              </span>
+            </div>
           </div>
 
           {/* Action Export Buttons */}
@@ -241,7 +255,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
               >
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
-                    isAbsent ? 'bg-rose-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'
+                    isAbsent ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'
                   }`}
                 />
                 <span className="font-semibold">{teacher.name}</span>
@@ -351,9 +365,10 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
                 {activeAssignments.map(assignment => {
-                  // Find all teachers free at this exact period on this day
+                  // Find all teachers free at this exact period on this day (Strictly excluding Coordinators and Block Teachers)
                   const availableFreeTeachers = teachers.filter(t => {
                     if (absentTeacherIds.includes(t.id)) return false;
+                    if (!isEligibleForProxy(t, classes)) return false;
                     const hasClass = entries.some(
                       e => e.day === selectedDay && e.periodIndex === assignment.periodIndex && e.teacherId === t.id
                     );

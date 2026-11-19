@@ -59,8 +59,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   initialSectionId,
   initialTeacherId,
 }) => {
-  if (!isOpen) return null;
-
   const [activeCategory, setActiveCategory] = useState<ExportCategory>('section');
 
   const [selectedClassId, setSelectedClassId] = useState<string>(
@@ -204,6 +202,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     selectedTeacher,
   ]);
 
+  if (!isOpen) return null;
+
   // Handle DOCX download based on active category
   const handleDownloadDocx = async () => {
     setIsExporting(true);
@@ -228,7 +228,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       }
     } catch (err) {
       console.error(err);
-      alert('Error exporting Word document.');
+      triggerNotify('Word ফাইল এক্সপোর্ট করতে সমস্যা হয়েছে।');
     } finally {
       setIsExporting(false);
     }
@@ -258,7 +258,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       }
     } catch (err) {
       console.error(err);
-      alert('Error exporting PDF document.');
+      triggerNotify('PDF ফাইল এক্সপোর্ট করতে সমস্যা হয়েছে।');
     } finally {
       setIsExporting(false);
     }
@@ -271,7 +271,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       triggerNotify('Master Timetable Excel workbook (.xlsx) downloaded successfully!');
     } catch (err) {
       console.error(err);
-      alert('Error exporting Excel workbook.');
+      triggerNotify('Excel ফাইল এক্সপোর্ট করতে সমস্যা হয়েছে।');
     }
   };
 

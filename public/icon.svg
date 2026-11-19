@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#1D4ED8"/>
+  <rect x="96" y="112" width="320" height="304" rx="28" fill="#FFFFFF"/>
+  <path d="M96 112H416V184H96V112Z" fill="#EF4444"/>
+  <circle cx="160" cy="148" r="14" fill="#FFFFFF"/>
+  <circle cx="256" cy="148" r="14" fill="#FFFFFF"/>
+  <circle cx="352" cy="148" r="14" fill="#FFFFFF"/>
+  <!-- Calendar Grid Slots -->
+  <rect x="132" y="220" width="56" height="40" rx="8" fill="#2563EB"/>
+  <rect x="204" y="220" width="104" height="40" rx="8" fill="#3B82F6"/>
+  <rect x="324" y="220" width="56" height="40" rx="8" fill="#60A5FA"/>
+
+  <rect x="132" y="280" width="80" height="40" rx="8" fill="#3B82F6"/>
+  <rect x="228" y="280" width="72" height="40" rx="8" fill="#2563EB"/>
+  <rect x="316" y="280" width="64" height="40" rx="8" fill="#3B82F6"/>
+
+  <rect x="132" y="340" width="64" height="40" rx="8" fill="#60A5FA"/>
+  <rect x="212" y="340" width="88" height="40" rx="8" fill="#2563EB"/>
+  <rect x="316" y="340" width="64" height="40" rx="8" fill="#10B981"/>
+</svg>

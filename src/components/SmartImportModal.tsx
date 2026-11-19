@@ -68,14 +68,108 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
   settings,
   onApplyImport,
 }) => {
-  if (!isOpen) return null;
-
   const [activeTab, setActiveTab] = useState<'upload' | 'preview'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [sourceFileName, setSourceFileName] = useState<string>('');
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
+  const [isAutoSaved, setIsAutoSaved] = useState<boolean>(false);
+
+  if (!isOpen) return null;
+
+  // Helper to map and apply extracted data into system storage
+  const executeApply = (data: ExtractedData, mode: 'merge' | 'replace') => {
+    const subjectMap = new Map(subjects.map(s => [s.name.toLowerCase(), s]));
+    const teacherMap = new Map(teachers.map(t => [t.name.toLowerCase(), t]));
+    const classMap = new Map(classes.map(c => [c.name.toLowerCase(), c]));
+
+    const newSubjects: Subject[] = [...subjects];
+    const newTeachers: Teacher[] = [...teachers];
+    const newClasses: SchoolClass[] = [...classes];
+
+    // Ensure extracted subjects exist
+    data.subjects?.forEach(s => {
+      if (!subjectMap.has(s.name.toLowerCase())) {
+        const newSub: Subject = {
+          id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
+          name: s.name,
+          code: s.code || s.name.substring(0, 3).toUpperCase(),
+          color: '#3B82F6',
+        };
+        newSubjects.push(newSub);
+        subjectMap.set(s.name.toLowerCase(), newSub);
+      }
+    });
+
+    // Ensure extracted teachers exist
+    data.teachers?.forEach(t => {
+      if (!teacherMap.has(t.name.toLowerCase())) {
+        const initials = t.initials || t.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
+        const newTch: Teacher = {
+          id: `tch-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
+          name: t.name,
+          initials,
+          designation: t.designation || 'Teacher',
+          subjectIds: [],
+          maxConsecutivePeriods: 2,
+          maxDailyPeriods: 4,
+        };
+        newTeachers.push(newTch);
+        teacherMap.set(t.name.toLowerCase(), newTch);
+      }
+    });
+
+    // Ensure extracted classes exist
+    data.classes?.forEach(c => {
+      if (!classMap.has(c.name.toLowerCase())) {
+        const newCls: SchoolClass = {
+          id: `cls-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
+          name: c.name,
+          numericGrade: 1,
+          sections: (c.sections || ['Section A']).map((secName, idx) => ({
+            id: `sec-${idx}-${Date.now().toString(36)}`,
+            name: secName,
+          })),
+          subjectRequirements: [],
+        };
+        newClasses.push(newCls);
+        classMap.set(c.name.toLowerCase(), newCls);
+      }
+    });
+
+    // Map extracted entries to timetable entries
+    const mappedEntries: TimetableEntry[] = [];
+    data.entries?.forEach((e, idx) => {
+      const cls = classMap.get(e.className.toLowerCase()) || newClasses[0];
+      const sec = cls.sections.find(s => s.name.toLowerCase() === (e.sectionName || '').toLowerCase()) || cls.sections[0];
+      const sub = subjectMap.get(e.subjectName.toLowerCase()) || newSubjects[0];
+      const tch = teacherMap.get(e.teacherName.toLowerCase()) || newTeachers[0];
+
+      if (cls && sec && sub && tch) {
+        mappedEntries.push({
+          id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+          classId: cls.id,
+          sectionId: sec.id,
+          day: e.day || 'Sunday',
+          periodIndex: e.periodIndex || 1,
+          subjectId: sub.id,
+          teacherId: tch.id,
+          room: e.room,
+        });
+      }
+    });
+
+    onApplyImport(
+      newClasses,
+      newTeachers,
+      newSubjects,
+      mappedEntries,
+      mode,
+      data.schoolName
+    );
+  };
 
   // 1. Download Sample Excel Template
   const handleDownloadSampleExcel = () => {
@@ -210,6 +304,10 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
         };
 
         setExtractedData(extracted);
+        if (autoSaveEnabled) {
+          executeApply(extracted, importMode);
+          setIsAutoSaved(true);
+        }
         setActiveTab('preview');
       } catch (err: any) {
         setErrorMessage(err?.message || 'Failed to parse Excel file.');
@@ -248,6 +346,10 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
         const json = await res.json();
         if (json.success && json.data) {
           setExtractedData(json.data);
+          if (autoSaveEnabled) {
+            executeApply(json.data, importMode);
+            setIsAutoSaved(true);
+          }
           setActiveTab('preview');
         } else {
           throw new Error('AI was unable to extract structured routine data from this file.');
@@ -265,6 +367,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsAutoSaved(false);
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
       parseExcelFile(file);
@@ -276,97 +379,8 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
   // 4. Confirm and Apply Extracted Data into System
   const handleConfirmImport = () => {
     if (!extractedData) return;
-
-    // Helper maps
-    const subjectMap = new Map(subjects.map(s => [s.name.toLowerCase(), s]));
-    const teacherMap = new Map(teachers.map(t => [t.name.toLowerCase(), t]));
-    const classMap = new Map(classes.map(c => [c.name.toLowerCase(), c]));
-
-    const newSubjects: Subject[] = [...subjects];
-    const newTeachers: Teacher[] = [...teachers];
-    const newClasses: SchoolClass[] = [...classes];
-
-    // Ensure extracted subjects exist
-    extractedData.subjects?.forEach(s => {
-      if (!subjectMap.has(s.name.toLowerCase())) {
-        const newSub: Subject = {
-          id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: s.name,
-          code: s.code || s.name.substring(0, 3).toUpperCase(),
-          color: '#3B82F6',
-        };
-        newSubjects.push(newSub);
-        subjectMap.set(s.name.toLowerCase(), newSub);
-      }
-    });
-
-    // Ensure extracted teachers exist
-    extractedData.teachers?.forEach(t => {
-      if (!teacherMap.has(t.name.toLowerCase())) {
-        const initials = t.initials || t.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
-        const newTch: Teacher = {
-          id: `tch-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: t.name,
-          initials,
-          designation: t.designation || 'Teacher',
-          subjectIds: [],
-          maxConsecutivePeriods: 2,
-          maxDailyPeriods: 4,
-        };
-        newTeachers.push(newTch);
-        teacherMap.set(t.name.toLowerCase(), newTch);
-      }
-    });
-
-    // Ensure extracted classes exist
-    extractedData.classes?.forEach(c => {
-      if (!classMap.has(c.name.toLowerCase())) {
-        const newCls: SchoolClass = {
-          id: `cls-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: c.name,
-          numericGrade: 1,
-          sections: (c.sections || ['Section A']).map((secName, idx) => ({
-            id: `sec-${idx}-${Date.now().toString(36)}`,
-            name: secName,
-          })),
-          subjectRequirements: [],
-        };
-        newClasses.push(newCls);
-        classMap.set(c.name.toLowerCase(), newCls);
-      }
-    });
-
-    // Map extracted entries to timetable entries
-    const mappedEntries: TimetableEntry[] = [];
-    extractedData.entries?.forEach((e, idx) => {
-      const cls = classMap.get(e.className.toLowerCase()) || newClasses[0];
-      const sec = cls.sections.find(s => s.name.toLowerCase() === (e.sectionName || '').toLowerCase()) || cls.sections[0];
-      const sub = subjectMap.get(e.subjectName.toLowerCase()) || newSubjects[0];
-      const tch = teacherMap.get(e.teacherName.toLowerCase()) || newTeachers[0];
-
-      if (cls && sec && sub && tch) {
-        mappedEntries.push({
-          id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
-          classId: cls.id,
-          sectionId: sec.id,
-          day: e.day || 'Sunday',
-          periodIndex: e.periodIndex || 1,
-          subjectId: sub.id,
-          teacherId: tch.id,
-          room: e.room,
-        });
-      }
-    });
-
-    onApplyImport(
-      newClasses,
-      newTeachers,
-      newSubjects,
-      mappedEntries,
-      importMode,
-      extractedData.schoolName
-    );
-
+    executeApply(extractedData, importMode);
+    setIsAutoSaved(true);
     onClose();
   };
 
@@ -427,6 +441,30 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                 </div>
               </div>
 
+              {/* Auto-Save directly on upload banner */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                      আপলোডের সাথে সাথে স্বয়ংক্রিয় সেভ (Auto-Save on Upload)
+                    </div>
+                    <div className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
+                      ফাইল আপলোড হওয়া মাত্রই তথ্যগুলো সরাসরি সেভ হয়ে সিস্টেমে কার্যকর হয়ে যাবে।
+                    </div>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={autoSaveEnabled}
+                    onChange={e => setAutoSaveEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
               {/* Upload Drag & Drop Box */}
               <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/30">
                 <input
@@ -478,11 +516,28 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
           ) : (
             /* Preview of Extracted Data */
             <div className="space-y-4">
+              {isAutoSaved && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-sm">সফলভাবে সরাসরি সেভ ও কার্যকর করা হয়েছে!</div>
+                      <div className="text-[11px] opacity-90 mt-0.5">
+                        ফাইল থেকে সংগৃহীত ক্লাস, শিক্ষক ও রুটিনের সকল তথ্য সরাসরি সিস্টেমে সেভ হয়েছে।
+                      </div>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-600 text-white font-bold text-[10px] tracking-wide shrink-0">
+                    SAVED ✓
+                  </span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Import Preview from {sourceFileName}</span>
+                    <span>Import Summary from {sourceFileName}</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Verify the extracted classes, teachers, and timetable period assignments below.

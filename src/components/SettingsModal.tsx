@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { DayOfWeek, PeriodTiming, SchoolSettings } from '../types';
-import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Check, Clock, Calendar } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { DayOfWeek, PeriodTiming, SchoolSettings, Subject, Teacher } from '../types';
+import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Lock, Plus, Trash2, Coffee, Sparkles } from 'lucide-react';
 import { AppState, exportBackupJSON, importBackupJSON } from '../services/storage';
+import { isHinduReligionTeacher } from '../services/parallelSubjects';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: SchoolSettings;
+  teachers?: Teacher[];
+  subjects?: Subject[];
   onUpdateSettings: (settings: SchoolSettings) => void;
   onResetToDefaults: () => void;
   fullAppState: AppState;
@@ -17,19 +20,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
+  teachers = [],
+  subjects,
   onUpdateSettings,
   onResetToDefaults,
   fullAppState,
   onImportBackup,
 }) => {
-  if (!isOpen) return null;
-
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
   const [schoolAddress, setSchoolAddress] = useState(settings.schoolAddress);
   const [principalName, setPrincipalName] = useState(settings.principalName);
   const [workingDays, setWorkingDays] = useState<DayOfWeek[]>(settings.workingDays);
   const [periodTimings, setPeriodTimings] = useState<PeriodTiming[]>(settings.periodTimings);
+  const [hinduRoom, setHinduRoom] = useState(settings.religionSchedule?.hinduRoom || '307');
+  const [maxConcurrentSections, setMaxConcurrentSections] = useState<number>(
+    settings.religionSchedule?.maxConcurrentSections || 3
+  );
+  const [combinedHinduTeacherId, setCombinedHinduTeacherId] = useState<string>(
+    settings.religionSchedule?.combinedHinduTeacherId || 'tch-tapash'
+  );
+  const [combinedSlots, setCombinedSlots] = useState<{ day: DayOfWeek; periodIndex: number }[]>(
+    settings.religionSchedule?.combinedSlots || []
+  );
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSchoolName(settings.schoolName);
+      setAcademicYear(settings.academicYear);
+      setSchoolAddress(settings.schoolAddress);
+      setPrincipalName(settings.principalName);
+      setWorkingDays(settings.workingDays);
+      setPeriodTimings(settings.periodTimings);
+      setHinduRoom(settings.religionSchedule?.hinduRoom || '307');
+      setMaxConcurrentSections(settings.religionSchedule?.maxConcurrentSections || 3);
+      setCombinedHinduTeacherId(settings.religionSchedule?.combinedHinduTeacherId || 'tch-tapash');
+      setCombinedSlots(settings.religionSchedule?.combinedSlots || []);
+      setConfirmReset(false);
+      setStatusMessage(null);
+    }
+  }, [isOpen, settings]);
+
+  if (!isOpen) return null;
 
   const ALL_DAYS: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -45,11 +79,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleTimingChange = (index: number, field: keyof PeriodTiming, value: string) => {
+  const handleToggleBreak = (index: number) => {
+    const updated = [...periodTimings];
+    const cur = updated[index];
+    const willBeBreak = !cur.isBreak;
+    updated[index] = {
+      ...cur,
+      isBreak: willBeBreak,
+      isLocked: willBeBreak,
+      label: willBeBreak
+        ? (cur.label.includes('টিফিন') ? cur.label : `${cur.label.replace(' (টিফিন বিরতি)', '')} (টিফিন বিরতি)`)
+        : cur.label.replace(' (টিফিন বিরতি)', ''),
+    };
+    setPeriodTimings(updated);
+  };
+
+  const handleAddPeriod = () => {
+    const nextIdx = periodTimings.length + 1;
+    // Calculate simple default start/end times
+    const last = periodTimings[periodTimings.length - 1];
+    const newPeriod: PeriodTiming = {
+      periodIndex: nextIdx,
+      label: `${nextIdx}${nextIdx === 1 ? 'st' : nextIdx === 2 ? 'nd' : nextIdx === 3 ? 'rd' : 'th'} Period`,
+      startTime: last ? last.endTime : '01:30 PM',
+      endTime: '02:15 PM',
+      isBreak: false,
+      isLocked: false,
+    };
+    setPeriodTimings([...periodTimings, newPeriod]);
+  };
+
+  const handleRemovePeriod = () => {
+    if (periodTimings.length <= 4) {
+      setStatusMessage({ type: 'error', text: 'ন্যূনতম ৪টি পিরিয়ড রাখা আবশ্যক।' });
+      return;
+    }
+    setStatusMessage(null);
+    setPeriodTimings(periodTimings.slice(0, periodTimings.length - 1));
+  };
+
+  const handleSetDefaultTiffin = () => {
+    const updated = periodTimings.map((p, idx) => {
+      if (idx === 3) {
+        return {
+          ...p,
+          label: p.label.includes('টিফিন') ? p.label : `${p.label.replace(' (টিফিন বিরতি)', '')} (টিফিন বিরতি)`,
+          isBreak: true,
+          isLocked: true,
+        };
+      }
+      return {
+        ...p,
+        label: p.label.replace(' (টিফিন বিরতি)', ''),
+        isBreak: false,
+        isLocked: false,
+      };
+    });
+    setPeriodTimings(updated);
+  };
+
+  const handleTimingChange = (index: number, field: keyof PeriodTiming, value: any) => {
     const updated = [...periodTimings];
     updated[index] = { ...updated[index], [field]: value };
     setPeriodTimings(updated);
   };
+
+  const handleToggleCombinedSlot = (day: DayOfWeek, periodIndex: number) => {
+    const exists = combinedSlots.some(s => s.day === day && s.periodIndex === periodIndex);
+    if (exists) {
+      setCombinedSlots(combinedSlots.filter(s => !(s.day === day && s.periodIndex === periodIndex)));
+    } else {
+      setCombinedSlots([...combinedSlots, { day, periodIndex }]);
+    }
+  };
+
+  const hinduTeachers = teachers.filter(t => !t.isBlockTeacher && isHinduReligionTeacher(t, subjects));
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +164,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       principalName: principalName.trim(),
       workingDays,
       periodTimings,
+      religionSchedule: {
+        hinduRoom: hinduRoom.trim() || '307',
+        maxConcurrentSections: Math.max(1, Math.min(6, Number(maxConcurrentSections) || 3)),
+        combinedHinduTeacherId: combinedHinduTeacherId || undefined,
+        combinedSlots,
+      },
     });
     onClose();
   };
@@ -85,10 +195,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const content = ev.target?.result as string;
         const restored = importBackupJSON(content);
         onImportBackup(restored);
-        alert('Timetable database successfully restored from backup.');
-        onClose();
+        setStatusMessage({ type: 'success', text: 'ব্যাকআপ ফাইল থেকে সম্পূর্ণ রুটিন সফলভাবে রিস্টোর হয়েছে।' });
       } catch (err: any) {
-        alert('Failed to parse backup file: ' + err.message);
+        setStatusMessage({ type: 'error', text: 'ব্যাকআপ ফাইল পড়া যায়নি: ' + (err?.message || 'Invalid JSON') });
       }
     };
     reader.readAsText(file);
@@ -122,6 +231,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="p-6 overflow-y-auto space-y-5 flex-1">
+          {statusMessage && (
+            <div
+              className={`px-3.5 py-2.5 rounded-lg border text-xs font-medium flex items-center justify-between gap-2 ${
+                statusMessage.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+              }`}
+            >
+              <span>{statusMessage.text}</span>
+              <button
+                type="button"
+                onClick={() => setStatusMessage(null)}
+                className="underline font-semibold shrink-0"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          )}
           {/* General Info */}
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
@@ -233,54 +360,229 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Period Timings & Bell Schedule */}
-          <div className="space-y-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center justify-between">
-              <span>Daily Period Bell Schedule</span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {periodTimings.length} periods configured
-              </span>
+          <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
+                  Daily Period Bell Schedule & Tiffin Break
+                </span>
+                <span className="text-[11px] text-slate-500 font-normal">
+                  মোট {periodTimings.length}টি পিরিয়ড কনফিগার করা আছে (যেকোনো পিরিয়ডকে টিফিন লক হিসেবে রাখতে পারেন)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleSetDefaultTiffin}
+                  title="৪র্থ পিরিয়ডকে টিফিন বিরতি হিসেবে লক করুন"
+                  className="px-2 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                >
+                  <Coffee className="w-3 h-3 text-amber-600" />
+                  <span>৪র্থ পিরিয়ড টিফিন</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddPeriod}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3 text-blue-600" />
+                  <span>+ পিরিয়ড বৃদ্ধি</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemovePeriod}
+                  className="px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 rounded-lg border border-rose-200 dark:border-rose-800 flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-600" />
+                  <span>- কমান</span>
+                </button>
+              </div>
             </div>
 
             <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                   <tr>
-                    <th className="py-2 px-3 font-semibold">Period</th>
-                    <th className="py-2 px-3 font-semibold">Start Time</th>
-                    <th className="py-2 px-3 font-semibold">End Time</th>
+                    <th className="py-2.5 px-3 font-semibold">পিরিয়ড নাম (Period)</th>
+                    <th className="py-2.5 px-3 font-semibold">শুরু (Start)</th>
+                    <th className="py-2.5 px-3 font-semibold">শেষ (End)</th>
+                    <th className="py-2.5 px-3 font-semibold text-center">টিফিন বিরতি (লক 🔒)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {periodTimings.map((p, idx) => (
-                    <tr key={p.periodIndex} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                      <td className="py-1.5 px-3">
-                        <input
-                          type="text"
-                          value={p.label}
-                          onChange={e => handleTimingChange(idx, 'label', e.target.value)}
-                          className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-semibold"
-                        />
-                      </td>
-                      <td className="py-1.5 px-3">
-                        <input
-                          type="text"
-                          value={p.startTime}
-                          onChange={e => handleTimingChange(idx, 'startTime', e.target.value)}
-                          className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                        />
-                      </td>
-                      <td className="py-1.5 px-3">
-                        <input
-                          type="text"
-                          value={p.endTime}
-                          onChange={e => handleTimingChange(idx, 'endTime', e.target.value)}
-                          className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {periodTimings.map((p, idx) => {
+                    const isTiffin = Boolean(p.isBreak || p.isLocked);
+                    return (
+                      <tr
+                        key={p.periodIndex}
+                        className={`transition-colors ${
+                          isTiffin
+                            ? 'bg-amber-50/70 dark:bg-amber-950/30 font-medium'
+                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/20'
+                        }`}
+                      >
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {p.periodIndex}
+                            </span>
+                            <input
+                              type="text"
+                              value={p.label}
+                              onChange={e => handleTimingChange(idx, 'label', e.target.value)}
+                              className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-semibold"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="text"
+                            value={p.startTime}
+                            onChange={e => handleTimingChange(idx, 'startTime', e.target.value)}
+                            className="w-24 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="text"
+                            value={p.endTime}
+                            onChange={e => handleTimingChange(idx, 'endTime', e.target.value)}
+                            className="w-24 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBreak(idx)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 mx-auto ${
+                              isTiffin
+                                ? 'bg-amber-600 text-white shadow-xs hover:bg-amber-700'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                            }`}
+                          >
+                            {isTiffin ? (
+                              <>
+                                <Lock className="w-3.5 h-3.5 text-white" />
+                                <span>টিফিন লক (Break)</span>
+                              </>
+                            ) : (
+                              <span>সাধারণ ক্লাস</span>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              💡 <strong>টিফিন বিরতি ও লক সিস্টেম:</strong> যেকোনো পিরিয়ডকে টিফিন লক হিসেবে নির্বাচন করলে ঐ সময়ে সব শ্রেণির জন্য ক্লাস লক থাকবে এবং রুটিনে কোনো ক্লাস শিডিউল হবে না।
+            </p>
+          </div>
+
+          {/* Combined Religious Class Scheduling */}
+          <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Combined Religious Class Scheduling (ইসলাম ও হিন্দু ধর্ম সমন্বয়)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  ইসলাম ধর্মের শিক্ষার্থীরা নিজ নিজ শ্রেণিকক্ষে আলাদা শিক্ষকের কাছে এবং হিন্দু ধর্মের শিক্ষার্থীরা সম্মিলিতভাবে নির্ধারিত রুমে সর্বোচ্চ নির্দিষ্ট সংখ্যক সেকশন একসাথে ক্লাস করবে।
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/40 dark:bg-purple-950/20">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Hindu Combined Room
+                </label>
+                <input
+                  type="text"
+                  value={hinduRoom}
+                  onChange={e => setHinduRoom(e.target.value)}
+                  placeholder="307"
+                  className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Max Sections / Period
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={maxConcurrentSections}
+                  onChange={e => setMaxConcurrentSections(Number(e.target.value))}
+                  className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Combined Hindu Teacher
+                </label>
+                <select
+                  value={combinedHinduTeacherId}
+                  onChange={e => setCombinedHinduTeacherId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-medium"
+                >
+                  <option value="">Any Qualified Teacher</option>
+                  {(hinduTeachers.length > 0 ? hinduTeachers : teachers.filter(t => !t.isBlockTeacher)).map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.initials})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                  Preferred Combined Religion Periods (ঐচ্ছিক — অগ্রাধিকার পাবে):
+                </span>
+                {combinedSlots.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCombinedSlots([])}
+                    className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline font-semibold"
+                  >
+                    সব পরিষ্কার করুন
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {workingDays.map(day =>
+                  periodTimings
+                    .filter(p => !p.isBreak && !p.isLocked)
+                    .slice(0, 6)
+                    .map(p => {
+                      const active = combinedSlots.some(
+                        s => s.day === day && s.periodIndex === p.periodIndex
+                      );
+                      return (
+                        <button
+                          key={`${day}_${p.periodIndex}`}
+                          type="button"
+                          onClick={() => handleToggleCombinedSlot(day, p.periodIndex)}
+                          className={`px-2 py-1 text-[10px] font-semibold rounded-md border transition-colors ${
+                            active
+                              ? 'bg-purple-600 text-white border-purple-600'
+                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-purple-400'
+                          }`}
+                        >
+                          {day.slice(0, 3)} P{p.periodIndex}
+                        </button>
+                      );
+                    })
+                )}
+              </div>
             </div>
           </div>
 
@@ -310,19 +612,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </label>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Reset entire timetable to initial default data? All changes will be replaced with clean seed data.')) {
-                    onResetToDefaults();
-                    onClose();
-                  }
-                }}
-                className="px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg flex items-center gap-1.5 transition-colors ml-auto"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset to Factory Defaults</span>
-              </button>
+              {confirmReset ? (
+                <div className="flex items-center gap-1.5 ml-auto bg-rose-50 dark:bg-rose-950/60 p-1 rounded-lg border border-rose-200 dark:border-rose-800">
+                  <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold px-1">
+                    সব রিসেট করবেন?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onResetToDefaults();
+                      onClose();
+                    }}
+                    className="px-2 py-1 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors"
+                  >
+                    হ্যাঁ, রিসেট করুন
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReset(false)}
+                    className="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                  >
+                    বাতিল
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(true)}
+                  className="px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg flex items-center gap-1.5 transition-colors ml-auto"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Factory Defaults</span>
+                </button>
+              )}
             </div>
           </div>
 

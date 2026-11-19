@@ -1,13 +1,31 @@
 import React, { useState } from 'react';
-import { Subject, Teacher } from '../types';
-import { X, Plus, Trash2, Edit2, Users, Check, Shield } from 'lucide-react';
+import { SchoolClass, Subject, Teacher, TeacherClassAssignment, TimetableEntry } from '../types';
+import {
+  X,
+  Plus,
+  Trash2,
+  Edit2,
+  Users,
+  Check,
+  Shield,
+  BookOpen,
+  Layers,
+  Search,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+} from 'lucide-react';
 
 interface TeacherManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   teachers: Teacher[];
   subjects: Subject[];
+  classes: SchoolClass[];
+  entries?: TimetableEntry[];
   onUpdateTeachers: (updated: Teacher[]) => void;
+  onUpdateClasses?: (updatedClasses: SchoolClass[]) => void;
+  onDeleteTeacher?: (teacherId: string, removeAssignedEntries?: boolean) => void;
 }
 
 export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
@@ -15,12 +33,20 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   onClose,
   teachers,
   subjects,
+  classes,
+  entries = [],
   onUpdateTeachers,
+  onUpdateClasses,
+  onDeleteTeacher,
 }) => {
-  if (!isOpen) return null;
-
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [isAddingNew, setIsAddingNew] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Delete confirmation modal state (100% in-app, zero window.confirm)
+  const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
+  const [deleteRemoveEntries, setDeleteRemoveEntries] = useState<boolean>(true);
+  const [successNotice, setSuccessNotice] = useState<string>('');
 
   // Form states
   const [name, setName] = useState('');
@@ -29,7 +55,23 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [assignedClassSections, setAssignedClassSections] = useState<TeacherClassAssignment[]>([]);
   const [maxConsecutive, setMaxConsecutive] = useState<number>(2);
+  const [isBlockTeacher, setIsBlockTeacher] = useState<boolean>(false);
+  const [isCoordinator, setIsCoordinator] = useState<boolean>(false);
+  const [noProxy, setNoProxy] = useState<boolean>(false);
+
+  // New assignment picker states
+  const [assignmentClassId, setAssignmentClassId] = useState<string>(classes[0]?.id || '');
+  const [assignmentSectionId, setAssignmentSectionId] = useState<string>('all');
+  const [assignmentSubjectId, setAssignmentSubjectId] = useState<string>(subjects[0]?.id || '');
+
+  if (!isOpen) return null;
+
+  // Calculate routine count for any teacher
+  const getAssignedCount = (teacherId: string) => {
+    return entries.filter(e => e.teacherId === teacherId).length;
+  };
 
   const startEdit = (teacher: Teacher) => {
     setEditingTeacher(teacher);
@@ -39,8 +81,14 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setDesignation(teacher.designation);
     setEmail(teacher.email || '');
     setPhone(teacher.phone || '');
-    setSelectedSubjectIds(teacher.subjectIds || []);
+    const tSubs = teacher.subjectIds || [];
+    setSelectedSubjectIds(tSubs);
+    setAssignmentSubjectId(tSubs[0] || '');
+    setAssignedClassSections(teacher.assignedClassSections || []);
     setMaxConsecutive(teacher.maxConsecutivePeriods || 2);
+    setIsBlockTeacher(Boolean(teacher.isBlockTeacher));
+    setIsCoordinator(Boolean(teacher.isCoordinator));
+    setNoProxy(Boolean(teacher.noProxy));
   };
 
   const startAddNew = () => {
@@ -51,18 +99,56 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setDesignation('Assistant Teacher');
     setEmail('');
     setPhone('');
-    setSelectedSubjectIds([subjects[0]?.id || '']);
+    const defaultSub = subjects[0]?.id || '';
+    setSelectedSubjectIds(defaultSub ? [defaultSub] : []);
+    setAssignmentSubjectId(defaultSub);
+    setAssignedClassSections([]);
     setMaxConsecutive(2);
+    setIsBlockTeacher(false);
+    setIsCoordinator(false);
+    setNoProxy(false);
   };
 
   const handleToggleSubject = (subId: string) => {
     if (selectedSubjectIds.includes(subId)) {
       if (selectedSubjectIds.length > 1) {
-        setSelectedSubjectIds(selectedSubjectIds.filter(id => id !== subId));
+        const next = selectedSubjectIds.filter(id => id !== subId);
+        setSelectedSubjectIds(next);
+        if (assignmentSubjectId === subId) {
+          setAssignmentSubjectId(next[0] || '');
+        }
       }
     } else {
-      setSelectedSubjectIds([...selectedSubjectIds, subId]);
+      const next = [...selectedSubjectIds, subId];
+      setSelectedSubjectIds(next);
+      if (!assignmentSubjectId || !selectedSubjectIds.includes(assignmentSubjectId)) {
+        setAssignmentSubjectId(subId);
+      }
     }
+  };
+
+  const handleAddAssignment = () => {
+    if (!assignmentClassId) return;
+    const exists = assignedClassSections.some(
+      a =>
+        a.classId === assignmentClassId &&
+        (a.sectionId || 'all') === assignmentSectionId &&
+        (a.subjectId || '') === (assignmentSubjectId || '')
+    );
+    if (!exists) {
+      setAssignedClassSections([
+        ...assignedClassSections,
+        {
+          classId: assignmentClassId,
+          sectionId: assignmentSectionId === 'all' ? undefined : assignmentSectionId,
+          subjectId: assignmentSubjectId || undefined,
+        },
+      ]);
+    }
+  };
+
+  const handleRemoveAssignment = (index: number) => {
+    setAssignedClassSections(assignedClassSections.filter((_, i) => i !== index));
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -71,8 +157,12 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
 
     const initialsVal = initials.trim() || name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
 
+    let targetTeacher: Teacher;
+
+    const effectiveNoProxy = noProxy || isBlockTeacher || isCoordinator;
+
     if (isAddingNew) {
-      const newTeacher: Teacher = {
+      targetTeacher = {
         id: `tch-${Date.now().toString(36)}`,
         name: name.trim(),
         initials: initialsVal,
@@ -80,48 +170,87 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         subjectIds: selectedSubjectIds,
+        assignedClassSections: assignedClassSections,
         maxConsecutivePeriods: maxConsecutive,
         maxDailyPeriods: 4,
+        isBlockTeacher,
+        isCoordinator,
+        noProxy: effectiveNoProxy,
       };
-      onUpdateTeachers([...teachers, newTeacher]);
+      onUpdateTeachers([...teachers, targetTeacher]);
+      setSuccessNotice(`শিক্ষক "${targetTeacher.name}" সংরক্ষিত এবং নির্ধারিত ক্লাসে বিষয় স্বয়ংক্রিয়ভাবে যুক্ত করা হয়েছে!`);
     } else if (editingTeacher) {
-      const updated = teachers.map(t => {
-        if (t.id === editingTeacher.id) {
-          return {
-            ...t,
-            name: name.trim(),
-            initials: initialsVal,
-            designation: designation.trim(),
-            email: email.trim() || undefined,
-            phone: phone.trim() || undefined,
-            subjectIds: selectedSubjectIds,
-            maxConsecutivePeriods: maxConsecutive,
-          };
-        }
-        return t;
-      });
+      targetTeacher = {
+        ...editingTeacher,
+        name: name.trim(),
+        initials: initialsVal,
+        designation: designation.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        subjectIds: selectedSubjectIds,
+        assignedClassSections: assignedClassSections,
+        maxConsecutivePeriods: maxConsecutive,
+        isBlockTeacher,
+        isCoordinator,
+        noProxy: effectiveNoProxy,
+      };
+      const updated = teachers.map(t => (t.id === editingTeacher.id ? targetTeacher : t));
       onUpdateTeachers(updated);
+      setSuccessNotice(`শিক্ষক "${name.trim()}" এর তথ্য আপডেট ও বিষয় ব্যবস্থাপনায় সিঙ্ক করা হয়েছে!`);
+    } else {
+      return;
     }
 
     setEditingTeacher(null);
     setIsAddingNew(false);
+
+    setTimeout(() => {
+      setSuccessNotice('');
+    }, 4000);
   };
 
-  const handleDelete = (teacherId: string) => {
-    if (confirm('Delete this teacher profile?')) {
-      onUpdateTeachers(teachers.filter(t => t.id !== teacherId));
-      if (editingTeacher?.id === teacherId) {
-        setEditingTeacher(null);
-        setIsAddingNew(false);
-      }
+  // Trigger delete confirmation modal
+  const promptDelete = (teacher: Teacher) => {
+    setTeacherToDelete(teacher);
+    setDeleteRemoveEntries(true);
+  };
+
+  // Perform delete safely without any blocking native dialog
+  const executeDelete = () => {
+    if (!teacherToDelete) return;
+    const targetId = teacherToDelete.id;
+    const targetName = teacherToDelete.name;
+
+    if (onDeleteTeacher) {
+      onDeleteTeacher(targetId, deleteRemoveEntries);
+    } else {
+      onUpdateTeachers(teachers.filter(t => t.id !== targetId));
     }
+
+    if (editingTeacher?.id === targetId) {
+      setEditingTeacher(null);
+      setIsAddingNew(false);
+    }
+
+    setTeacherToDelete(null);
+    setSuccessNotice(`শিক্ষক "${targetName}" সফলভাবে মুছে ফেলা হয়েছে!`);
+
+    setTimeout(() => {
+      setSuccessNotice('');
+    }, 4000);
   };
 
   const subjectMap = new Map(subjects.map(s => [s.id, s]));
 
+  const filteredTeachers = teachers.filter(t =>
+    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.initials.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 relative">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -130,10 +259,10 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                Faculty & Teacher Management
+                Faculty & Teacher Management (শিক্ষক ব্যবস্থাপনা)
               </h2>
               <p className="text-xs text-slate-500">
-                Manage teaching faculty, subject specializations, and consecutive teaching policies.
+                নতুন শিক্ষক যুক্ত করুন, তথ্য এডিট করুন অথবা শিক্ষক ও তাঁর রুটিন ডিলিট করুন।
               </p>
             </div>
           </div>
@@ -145,63 +274,148 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
           </button>
         </div>
 
+        {/* Success Alert Banner */}
+        {successNotice && (
+          <div className="mx-6 mt-3 p-2.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-200 font-semibold flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{successNotice}</span>
+            </div>
+            <button
+              onClick={() => setSuccessNotice('')}
+              className="p-0.5 text-emerald-600 hover:text-emerald-900 dark:hover:text-emerald-100 rounded"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Teacher List on Left */}
-          <div className="w-full md:w-80 border-r border-slate-200 dark:border-slate-800 p-3 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/40 shrink-0">
-            <div className="flex items-center justify-between mb-3 px-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Faculty ({teachers.length})
+          <div className="w-full md:w-84 border-r border-slate-200 dark:border-slate-800 p-3 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/40 shrink-0 flex flex-col">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                শিক্ষক তালিকা ({filteredTeachers.length}/{teachers.length})
               </span>
               <button
                 onClick={startAddNew}
-                className="px-2 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md flex items-center gap-1 shadow-2xs"
+                className="px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md flex items-center gap-1 shadow-2xs"
               >
                 <Plus className="w-3 h-3" />
-                <span>New</span>
+                <span>+ নতুন শিক্ষক</span>
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              {teachers.map(t => {
-                const isSelected = editingTeacher?.id === t.id;
-                return (
-                  <div
-                    key={t.id}
-                    onClick={() => startEdit(t)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/40'
-                        : 'border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-xs text-slate-900 dark:text-white">
-                        {t.name}
+            {/* Quick Search */}
+            <div className="relative mb-2.5">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="শিক্ষক বা কোড খুঁজুন..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Teacher Cards */}
+            <div className="space-y-1.5 flex-1 overflow-y-auto pr-0.5">
+              {filteredTeachers.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-400">
+                  কোনো শিক্ষক পাওয়া যায়নি।
+                </div>
+              ) : (
+                filteredTeachers.map(t => {
+                  const isSelected = editingTeacher?.id === t.id;
+                  const routineCount = getAssignedCount(t.id);
+
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => startEdit(t)}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all group relative ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800/80'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">
+                            {t.name}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {t.designation}
+                          </div>
+                        </div>
+
+                        {/* Badges & Actions */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded font-bold">
+                            {t.initials}
+                          </span>
+
+                          {/* Quick Delete Button directly on card */}
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              promptDelete(t);
+                            }}
+                            title={`"${t.name}" কে মুছে ফেলুন (Delete)`}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-md transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.2 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-bold">
-                        {t.initials}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                      {t.designation}
-                    </div>
-                    <div className="flex items-center gap-1 mt-1 flex-wrap">
-                      {t.subjectIds.slice(0, 3).map(sId => (
+
+                      {/* Bottom line: subjects + role badges + routine workload badge */}
+                      <div className="flex items-center justify-between gap-1 mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px]">
+                        <div className="flex items-center gap-1 flex-wrap text-slate-500">
+                          {t.isBlockTeacher && (
+                            <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded font-semibold">
+                              ব্লক
+                            </span>
+                          )}
+                          {t.isCoordinator && (
+                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded font-semibold">
+                              কো-অর্ডিনেটর
+                            </span>
+                          )}
+                          {t.noProxy && !t.isBlockTeacher && !t.isCoordinator && (
+                            <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-semibold">
+                              প্রক্সি মুক্ত
+                            </span>
+                          )}
+                          {t.subjectIds.slice(0, 2).map(sId => (
+                            <span
+                              key={sId}
+                              className="px-1 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded"
+                            >
+                              {subjectMap.get(sId)?.code || sId}
+                            </span>
+                          ))}
+                          {t.subjectIds.length > 2 && (
+                            <span className="text-slate-400">+{t.subjectIds.length - 2}</span>
+                          )}
+                        </div>
+
                         <span
-                          key={sId}
-                          className="text-[9px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded"
+                          className={`font-semibold px-1.5 py-0.2 rounded shrink-0 ${
+                            routineCount > 0
+                              ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                          }`}
                         >
-                          {subjectMap.get(sId)?.code || sId}
+                          {routineCount > 0 ? `${routineCount} ক্লাস` : 'ফ্রি'}
                         </span>
-                      ))}
-                      {t.subjectIds.length > 3 && (
-                        <span className="text-[9px] text-slate-400">+{t.subjectIds.length - 3}</span>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -210,17 +424,23 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
             {editingTeacher || isAddingNew ? (
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {isAddingNew ? 'Add New Faculty Member' : `Edit: ${editingTeacher?.name}`}
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {isAddingNew ? 'নতুন শিক্ষক প্রোফাইল তৈরি' : `শিক্ষক সম্পাদনা: ${editingTeacher?.name}`}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      শিক্ষকের নাম, বিষয় ও ক্লাস সংক্রান্ত তথ্য পরিবর্তন করুন।
+                    </p>
+                  </div>
+
                   {!isAddingNew && editingTeacher && (
                     <button
                       type="button"
-                      onClick={() => handleDelete(editingTeacher.id)}
-                      className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1"
+                      onClick={() => promptDelete(editingTeacher)}
+                      className="px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 rounded-lg transition-colors flex items-center gap-1.5 border border-rose-200 dark:border-rose-900 shadow-2xs"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Teacher</span>
+                      <span>শিক্ষক ডিলিট করুন (Delete)</span>
                     </button>
                   )}
                 </div>
@@ -228,7 +448,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                      Full Name *
+                      Full Name (পূর্ণ নাম) *
                     </label>
                     <input
                       type="text"
@@ -236,26 +456,26 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                       placeholder="e.g. Mr. A. Rahman"
                       value={name}
                       onChange={e => setName(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-medium"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                      Initials / Routine Code
+                      Initials / Routine Code (সংক্ষিপ্ত নাম)
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. AR"
                       value={initials}
                       onChange={e => setInitials(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 uppercase"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 uppercase font-semibold"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                      Designation
+                      Designation (পদবী)
                     </label>
                     <input
                       type="text"
@@ -268,7 +488,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                      Max Consecutive Classes
+                      Max Consecutive Classes (একটানা সর্বোচ্চ ক্লাস)
                     </label>
                     <select
                       value={maxConsecutive}
@@ -283,10 +503,67 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                   </div>
                 </div>
 
+                {/* Institutional Role & Proxy Policy Checkboxes */}
+                <div className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>বিশেষ দায়িত্ব ও প্রক্সি নীতি (Role & Proxy Exemption)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={isBlockTeacher}
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          setIsBlockTeacher(checked);
+                          if (checked) setNoProxy(true);
+                        }}
+                        className="mt-0.5 rounded text-indigo-600"
+                      />
+                      <div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">ব্লক টিচার (Play/Nursery)</div>
+                        <div className="text-[10px] text-slate-500">অন্য কোনো ক্লাস ও প্রক্সিতে নিষিদ্ধ</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={isCoordinator}
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          setIsCoordinator(checked);
+                          if (checked) setNoProxy(true);
+                        }}
+                        className="mt-0.5 rounded text-purple-600"
+                      />
+                      <div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">কো-অর্ডিনেটর (Coordinator)</div>
+                        <div className="text-[10px] text-slate-500">প্রক্সি ক্লাস দেওয়া যাবে না</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={noProxy || isBlockTeacher || isCoordinator}
+                        onChange={e => setNoProxy(e.target.checked)}
+                        disabled={isBlockTeacher || isCoordinator}
+                        className="mt-0.5 rounded text-amber-600"
+                      />
+                      <div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">প্রক্সি মুক্ত (No Proxy)</div>
+                        <div className="text-[10px] text-slate-500">প্রক্সি শিডিউলে আসবেন না</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Multiple Qualified Subjects Assignment */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
-                    Subjects Qualified to Teach (Select multiple)
+                    পড়ানোর যোগ্য বিষয়সমূহ (Subjects Qualified to Teach)
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {subjects.map(sub => {
@@ -315,48 +592,291 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingTeacher(null);
-                      setIsAddingNew(false);
-                    }}
-                    className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-lg"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
-                  >
-                    Save Teacher
-                  </button>
+                {/* Class, Section & Subject Teaching Allocation */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      শ্রেণি ও সেকশন নির্ধারণ (Assigned Classes & Sections)
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      এই শিক্ষক কোন কোন শ্রেণিতে ও সেকশনে কোন বিষয় পড়াবেন তা যুক্ত করুন:
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-lg text-[11px] text-blue-700 dark:text-blue-300">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>
+                        <strong>অটো-অ্যাড সিঙ্ক:</strong> এখানে ক্লাস ও বিষয় যুক্ত করলেই তা স্বয়ংক্রিয়ভাবে <strong>বিষয় ব্যবস্থাপনা (Subject Management)</strong>-এ ওই ক্লাসের রুটিন রিকোয়ারমেন্ট ও এই শিক্ষকের নামে যুক্ত হয়ে যাবে।
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Add Class Assignment Row */}
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          শ্রেণি (Class)
+                        </label>
+                        <select
+                          value={assignmentClassId}
+                          onChange={e => {
+                            setAssignmentClassId(e.target.value);
+                            setAssignmentSectionId('all');
+                          }}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
+                        >
+                          {classes.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          সেকশন (Section)
+                        </label>
+                        <select
+                          value={assignmentSectionId}
+                          onChange={e => setAssignmentSectionId(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
+                        >
+                          <option value="all">সব সেকশন (All Sections)</option>
+                          {classes
+                            .find(c => c.id === assignmentClassId)
+                            ?.sections.map(sec => (
+                              <option key={sec.id} value={sec.id}>
+                                {sec.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          বিষয় (Subject)
+                        </label>
+                        <select
+                          value={assignmentSubjectId}
+                          onChange={e => setAssignmentSubjectId(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
+                        >
+                          <option value="">সকল বিষয় / স্পেসিফিক নয়</option>
+                          {subjects
+                            .filter(s => selectedSubjectIds.includes(s.id) || selectedSubjectIds.length === 0)
+                            .map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} ({s.code})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleAddAssignment}
+                      className="w-full sm:w-auto px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ এই ক্লাসে যুক্ত করুন</span>
+                    </button>
+                  </div>
+
+                  {/* List of assigned classes */}
+                  <div className="space-y-1.5">
+                    {assignedClassSections.length === 0 ? (
+                      <div className="p-3 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-400">
+                        এখনো নির্দিষ্ট কোনো শ্রেণি নির্ধারিত করা হয়নি (সব শ্রেণিতে সাধারণ প্রযোজ্য)।
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {assignedClassSections.map((assignment, aIdx) => {
+                          const cls = classes.find(c => c.id === assignment.classId);
+                          const sec = cls?.sections.find(s => s.id === assignment.sectionId);
+                          const sub = subjects.find(s => s.id === assignment.subjectId);
+                          return (
+                            <div
+                              key={aIdx}
+                              className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-lg text-xs flex items-center gap-1.5 text-blue-900 dark:text-blue-200"
+                            >
+                              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                              <span className="font-bold">{cls?.name || assignment.classId}</span>
+                              {sec ? (
+                                <span className="text-[11px] text-blue-700 dark:text-blue-300">({sec.name})</span>
+                              ) : (
+                                <span className="text-[10px] text-blue-500 font-medium">(সব সেকশন)</span>
+                              )}
+                              {sub && (
+                                <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                  : {sub.name}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAssignment(aIdx)}
+                                className="p-0.5 hover:text-rose-600 rounded ml-1"
+                                title="মুছে ফেলুন"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    {!isAddingNew && editingTeacher && (
+                      <button
+                        type="button"
+                        onClick={() => promptDelete(editingTeacher)}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>শিক্ষক মুছে ফেলুন</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTeacher(null);
+                        setIsAddingNew(false);
+                      }}
+                      className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium"
+                    >
+                      বাতিল (Cancel)
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+                    >
+                      {isAddingNew ? 'শিক্ষক সংরক্ষণ করুন' : 'আপডেট সংরক্ষণ করুন'}
+                    </button>
+                  </div>
                 </div>
               </form>
             ) : (
               <div className="py-16 text-center text-slate-500">
-                <Users className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                <Users className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                 <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  Select a Teacher to View or Edit
+                  বাম পাশ থেকে যেকোনো শিক্ষক সিলেক্ট করুন
                 </div>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                  Or click "+ New" to add a new faculty member to the school roster.
+                  শিক্ষকের তথ্য পরিবর্তন করতে কার্ডে ক্লিক করুন অথবা ডিলিট করতে কার্ডের লাল ট্র্যাশ (🗑️) আইকনে ক্লিক করুন।
                 </p>
+                <button
+                  onClick={startAddNew}
+                  className="mt-4 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg inline-flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>নতুন শিক্ষক যোগ করুন</span>
+                </button>
               </div>
             )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+        <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="text-xs text-slate-500">
+            মোট শিক্ষক: <strong>{teachers.length} জন</strong>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
           >
-            Done
+            সম্পন্ন (Done)
           </button>
         </div>
+
+        {/* Custom In-App Delete Confirmation Modal (Zero window.confirm blocking!) */}
+        {teacherToDelete && (
+          <div className="absolute inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-100">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-300 dark:border-rose-900 shadow-2xl max-w-md w-full p-5 space-y-4 animate-in zoom-in-95 duration-150">
+              <div className="flex items-start gap-3">
+                <div className="p-3 bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400 rounded-xl shrink-0">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    শিক্ষকের প্রোফাইল মুছে ফেলতে চান?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Confirm deleting teacher profile from institutional roster.
+                  </p>
+                </div>
+              </div>
+
+              {/* Teacher Summary Details */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">শিক্ষকের নাম:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {teacherToDelete.name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">পদবী ও কোড:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {teacherToDelete.designation} ({teacherToDelete.initials})
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5 mt-1.5">
+                  <span className="text-slate-500">রুটিনে নির্ধারিত ক্লাস:</span>
+                  <span className={`font-bold ${getAssignedCount(teacherToDelete.id) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
+                    {getAssignedCount(teacherToDelete.id)} টি পিরিয়ড
+                  </span>
+                </div>
+              </div>
+
+              {/* Routine Cleanup Option */}
+              {getAssignedCount(teacherToDelete.id) > 0 && (
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-900/60">
+                  <input
+                    type="checkbox"
+                    checked={deleteRemoveEntries}
+                    onChange={e => setDeleteRemoveEntries(e.target.checked)}
+                    className="mt-0.5 rounded text-rose-600 focus:ring-rose-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-amber-900 dark:text-amber-200">
+                      রুটিনের সকল ক্লাসও মুছে ফেলুন
+                    </span>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                      এই শিক্ষকের শিডিউলে থাকা {getAssignedCount(teacherToDelete.id)}টি ক্লাস রুটিন থেকে স্বয়ংক্রিয়ভাবে সরিয়ে দেওয়া হবে।
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {/* Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setTeacherToDelete(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  বাতিল (Cancel)
+                </button>
+                <button
+                  type="button"
+                  onClick={executeDelete}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>হ্যাঁ, নিশ্চিত ডিলিট করুন</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

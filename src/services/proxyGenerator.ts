@@ -50,6 +50,52 @@ function getDepartmentOfSubject(subjectId: string): string | null {
   return null;
 }
 
+/**
+ * Checks if a teacher is eligible to be assigned a proxy class.
+ * Institutional rules:
+ * 1. কো-অর্ডিনেটরদের প্রক্সি ক্লাস দেওয়া যাবে না (Coordinators cannot be assigned proxy classes).
+ * 2. যারা ব্লক টিচার (প্লে ও নার্সারি) থাকবে তাদের প্রক্সি ক্লাসেও দেওয়া যাবে না।
+ * 3. মোয়াজ্জেম স্যার (বা noProxy ফ্ল্যাগযুক্ত শিক্ষক) কে প্রক্সি ক্লাস দেওয়া যাবে না।
+ */
+export function isEligibleForProxy(teacher: Teacher, classes?: SchoolClass[]): boolean {
+  // 1. Explicit noProxy flag
+  if (teacher.noProxy) return false;
+
+  // 2. Moazzem Sir exclusion (both English & Bengali spellings)
+  const lowerName = (teacher.name || '').toLowerCase();
+  if (
+    lowerName.includes('moazzem') ||
+    lowerName.includes('মোয়াজ্জেম') ||
+    lowerName.includes('মোয়াজ্জেম')
+  ) {
+    return false;
+  }
+
+  // 3. Coordinator restriction
+  if (teacher.isCoordinator) return false;
+  const desig = (teacher.designation || '').toLowerCase();
+  if (
+    desig.includes('coordinator') ||
+    desig.includes('কো-অর্ডিনেটর') ||
+    desig.includes('কো অর্ডিনেটর') ||
+    desig.includes('কোঅর্ডিনেটর')
+  ) {
+    return false;
+  }
+
+  // 4. Block Teacher restriction (dedicated to Play / Nursery)
+  if (teacher.isBlockTeacher) return false;
+  if (classes) {
+    const isPlayNurBlock = classes.some(
+      c =>
+        (c.id === 'cls-play' || c.id === 'cls-nursery' || c.numericGrade <= -1) &&
+        c.blockTeacherIds?.includes(teacher.id)
+    );
+    if (isPlayNurBlock) return false;
+  }
+  return true;
+}
+
 export function generateDailyProxyPlan(
   day: DayOfWeek,
   absentTeacherIds: string[],
@@ -69,8 +115,10 @@ export function generateDailyProxyPlan(
     e => e.day === day && absentTeacherIds.includes(e.teacherId)
   ).sort((a, b) => a.periodIndex - b.periodIndex);
 
-  // Available candidate teachers (not in absent list)
-  const availableTeachers = teachers.filter(t => !absentTeacherIds.includes(t.id));
+  // Available candidate teachers (not in absent list, and NOT Coordinators or Block Teachers)
+  const availableTeachers = teachers.filter(
+    t => !absentTeacherIds.includes(t.id) && isEligibleForProxy(t, classes)
+  );
 
   // Track who is busy in which period on this day
   // busyMap: "teacherId_periodIndex" -> entry

@@ -149,40 +149,45 @@ function buildClassSectionTable(
     ];
 
     activePeriods.forEach(p => {
-      const match = entries.find(e => e.day === day && e.periodIndex === p.periodIndex);
-      const sub = match ? subjectMap.get(match.subjectId) : null;
-      const tch = match ? teacherMap.get(match.teacherId) : null;
+      const matches = entries.filter(e => e.day === day && e.periodIndex === p.periodIndex);
+
+      const cellParagraphs: Paragraph[] =
+        matches.length > 0
+          ? matches.flatMap((match, idx) => {
+              const sub = subjectMap.get(match.subjectId);
+              const tch = teacherMap.get(match.teacherId);
+              return [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: idx === 0 ? 40 : 20, after: 10 },
+                  children: [new TextRun({ text: sub?.name || 'Class', bold: true, size: 17, color: '0F172A' })],
+                }),
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: idx === matches.length - 1 ? 40 : 20 },
+                  children: [
+                    new TextRun({
+                      text: `${tch?.name || tch?.initials || ''}${match.room ? ` (${match.room})` : ''}`,
+                      color: '475569',
+                      size: 14,
+                    }),
+                  ],
+                }),
+              ];
+            })
+          : [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: '—', color: 'CBD5E1', size: 16 })],
+              }),
+            ];
 
       cells.push(
         new TableCell({
           width: { size: Math.floor(8200 / activePeriods.length), type: WidthType.DXA },
           shading: { type: ShadingType.CLEAR, fill: rowBg },
           borders: CELL_BORDERS,
-          children: match
-            ? [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 40, after: 20 },
-                  children: [new TextRun({ text: sub?.name || 'Class', bold: true, size: 18, color: '0F172A' })],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 40 },
-                  children: [
-                    new TextRun({
-                      text: `${tch?.name || tch?.initials || ''}${match.room ? ` (${match.room})` : ''}`,
-                      color: '475569',
-                      size: 15,
-                    }),
-                  ],
-                }),
-              ]
-            : [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  children: [new TextRun({ text: '—', color: 'CBD5E1', size: 16 })],
-                }),
-              ],
+          children: cellParagraphs,
         })
       );
     });

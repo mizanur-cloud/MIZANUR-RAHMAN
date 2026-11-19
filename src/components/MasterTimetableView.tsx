@@ -8,6 +8,8 @@ import {
   TimetableEntry,
 } from '../types';
 import { Grid3X3, Users, BookOpen, Layers, Clock, TrendingUp, CalendarCheck } from 'lucide-react';
+import { isSlotDismissed } from '../services/scheduleTiers';
+import { isPlayOrNursery } from '../services/parallelSubjects';
 
 interface MasterTimetableViewProps {
   classes: SchoolClass[];
@@ -35,7 +37,8 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const classMap = new Map(classes.map(c => [c.id, c]));
 
-  const activePeriods = periodTimings.filter(p => !p.isBreak);
+  const allDisplayPeriods = periodTimings;
+  const activePeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
 
   // Flatten all class sections
   const allSections: { classObj: SchoolClass; sectionId: string; sectionName: string }[] = [];
@@ -47,6 +50,12 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
 
   // Calculate curriculum required periods across all sections
   const totalRequiredPeriods = classes.reduce((classAcc, c) => {
+    if (isPlayOrNursery(c)) {
+      const openPeriods = activePeriods.filter(
+        p => !isSlotDismissed(c, workingDays[0] || 'Sunday', p.periodIndex, c.sections[0]?.id, workingDays)
+      ).length;
+      return classAcc + openPeriods * workingDays.length * c.sections.length;
+    }
     const classReq = c.subjectRequirements.reduce((rAcc, req) => rAcc + req.periodsPerWeek, 0);
     return classAcc + classReq * c.sections.length;
   }, 0);
@@ -277,20 +286,32 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
         </div>
 
         <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
-          <table className="w-full text-left border-collapse min-w-[950px]">
+          <table className="w-full text-left border-collapse table-fixed">
             <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="py-3 px-4 font-bold uppercase tracking-wider w-36 shrink-0 bg-slate-100 dark:bg-slate-800">
-                  {pivotMode === 'byClass' ? 'Class & Section' : 'Teacher'}
+                <th className="py-2.5 px-3 font-bold uppercase tracking-wider w-32 shrink-0 bg-slate-100 dark:bg-slate-800">
+                  {pivotMode === 'byClass' ? 'Class & Sec' : 'Teacher'}
                 </th>
-                {activePeriods.map(p => (
-                  <th key={p.periodIndex} className="py-2.5 px-3 font-semibold text-center min-w-[130px]">
-                    <div className="text-slate-900 dark:text-white font-bold">{p.label}</div>
-                    <div className="text-[10px] text-slate-500 font-mono tabular-nums">
-                      {p.startTime} - {p.endTime}
-                    </div>
-                  </th>
-                ))}
+                {allDisplayPeriods.map(p => {
+                  const isBreak = p.isBreak || p.isLocked;
+                  return (
+                    <th
+                      key={p.periodIndex}
+                      className={`py-2.5 px-1.5 font-semibold text-center ${
+                        isBreak
+                          ? 'w-24 bg-amber-50/70 dark:bg-amber-950/30 border-x border-amber-200 dark:border-amber-900/40 text-amber-900 dark:text-amber-200'
+                          : 'min-w-[100px]'
+                      }`}
+                    >
+                      <div className="text-slate-900 dark:text-white font-bold text-xs truncate">
+                        {isBreak ? '☕ টিফিন 🔒' : p.label}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono tabular-nums opacity-75">
+                        {p.startTime} - {p.endTime}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
@@ -299,48 +320,109 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                     const rowEntries = entries.filter(
                       e => e.day === selectedDay && e.classId === classObj.id && e.sectionId === sectionId
                     );
-
                     return (
                       <tr
                         key={`${classObj.id}-${sectionId}`}
                         className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
                       >
-                        <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap">
+                        <td className="py-2 px-3 font-bold text-xs text-slate-900 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap truncate">
                           {classObj.name} - {sectionName}
                         </td>
 
-                        {activePeriods.map(period => {
-                          const match = rowEntries.find(e => e.periodIndex === period.periodIndex);
-                          const sub = match ? subjectMap.get(match.subjectId) : null;
-                          const tch = match ? teacherMap.get(match.teacherId) : null;
+                        {allDisplayPeriods.map(period => {
+                          const isBreak = period.isBreak || period.isLocked;
+                          const isDismissed = isSlotDismissed(classObj, selectedDay, period.periodIndex, sectionId, workingDays);
+
+                          if (isBreak) {
+                            return (
+                              <td
+                                key={period.periodIndex}
+                                className="p-0.5 border-r border-amber-200/50 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-center"
+                              >
+                                <div className="h-11 rounded border border-dashed border-amber-200 dark:border-amber-800/60 flex flex-col items-center justify-center text-amber-700 dark:text-amber-300 cursor-not-allowed select-none text-[10px]">
+                                  <span className="font-semibold">☕ টিফিন</span>
+                                  <span className="text-[8px] opacity-75">লক 🔒</span>
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          if (isDismissed) {
+                            return (
+                              <td
+                                key={period.periodIndex}
+                                className="p-0.5 border-r border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30 text-center"
+                              >
+                                <div className="h-11 rounded border border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-400 select-none text-[10px]">
+                                  <span className="font-semibold">🏠 ছুটি</span>
+                                  <span className="text-[8px]">Off</span>
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          const matches = rowEntries.filter(e => e.periodIndex === period.periodIndex);
 
                           return (
                             <td
                               key={period.periodIndex}
-                              className="p-1 border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 text-center"
+                              className="p-0.5 border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 text-center"
                             >
-                              {match ? (
+                              {matches.length === 1 ? (
+                                (() => {
+                                  const match = matches[0];
+                                  const sub = subjectMap.get(match.subjectId);
+                                  const tch = teacherMap.get(match.teacherId);
+                                  return (
+                                    <div
+                                      onClick={() =>
+                                        onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
+                                      }
+                                      className="p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all h-11 flex flex-col justify-between"
+                                    >
+                                      <div className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 truncate flex items-center gap-1">
+                                        <span
+                                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                                          style={{ backgroundColor: sub?.color || '#3B82F6' }}
+                                        />
+                                        <span className="truncate">{sub?.name || 'Class'}</span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-medium">
+                                        {tch?.initials ? `${tch.name} (${tch.initials})` : tch?.name}
+                                      </div>
+                                    </div>
+                                  );
+                                })()
+                              ) : matches.length > 1 ? (
                                 <div
                                   onClick={() =>
                                     onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
                                   }
-                                  className="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all"
+                                  className="p-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 hover:border-blue-500 cursor-pointer text-left transition-all min-h-11 flex flex-col justify-center gap-0.5"
                                 >
-                                  <div className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 truncate">
-                                    {sub?.name || 'Class'}
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 truncate">
-                                    {tch?.initials || tch?.name}
-                                  </div>
+                                  {matches.map(m => {
+                                    const sub = subjectMap.get(m.subjectId);
+                                    const tch = teacherMap.get(m.teacherId);
+                                    return (
+                                      <div key={m.id} className="flex items-center justify-between gap-1 text-[9.5px] leading-tight truncate">
+                                        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">
+                                          {sub?.code || sub?.name}
+                                        </span>
+                                        <span className="text-slate-500 dark:text-slate-400 shrink-0">
+                                          ({tch?.initials || '—'})
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div
                                   onClick={() =>
                                     onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
                                   }
-                                  className="h-10 rounded border border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-400 flex items-center justify-center text-slate-300 dark:text-slate-700 cursor-pointer text-[10px]"
+                                  className="h-11 rounded border border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-400 flex items-center justify-center text-slate-300 dark:text-slate-700 cursor-pointer text-[10px]"
                                 >
-                                  —
+                                  +
                                 </div>
                               )}
                             </td>
@@ -359,12 +441,28 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                         key={teacher.id}
                         className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
                       >
-                        <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap">
+                        <td className="py-2 px-3 font-bold text-xs text-slate-900 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap truncate">
                           <div>{teacher.name}</div>
                           <div className="text-[10px] text-slate-400 font-normal">{teacher.initials}</div>
                         </td>
 
-                        {activePeriods.map(period => {
+                        {allDisplayPeriods.map(period => {
+                          const isBreak = period.isBreak || period.isLocked;
+
+                          if (isBreak) {
+                            return (
+                              <td
+                                key={period.periodIndex}
+                                className="p-0.5 border-r border-amber-200/50 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-center"
+                              >
+                                <div className="h-11 rounded border border-dashed border-amber-200 dark:border-amber-800/60 flex flex-col items-center justify-center text-amber-700 dark:text-amber-300 cursor-not-allowed select-none text-[10px]">
+                                  <span className="font-semibold">☕ টিফিন</span>
+                                  <span className="text-[8px] opacity-75">লক 🔒</span>
+                                </div>
+                              </td>
+                            );
+                          }
+
                           const match = rowEntries.find(e => e.periodIndex === period.periodIndex);
                           const cls = match ? classMap.get(match.classId) : null;
                           const sec = cls?.sections.find(s => s.id === match?.sectionId);
@@ -373,16 +471,16 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                           return (
                             <td
                               key={period.periodIndex}
-                              className="p-1 border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 text-center"
+                              className="p-0.5 border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 text-center"
                             >
                               {match ? (
                                 <div
                                   onClick={() =>
                                     onOpenEditSlot(match.classId, match.sectionId, selectedDay, period.periodIndex)
                                   }
-                                  className="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all"
+                                  className="p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all h-11 flex flex-col justify-between"
                                 >
-                                  <div className="font-semibold text-[11px] text-blue-700 dark:text-blue-300 truncate">
+                                  <div className="font-semibold text-[10px] text-blue-700 dark:text-blue-300 truncate">
                                     {cls?.name} · {sec?.name}
                                   </div>
                                   <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
@@ -390,8 +488,8 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                   </div>
                                 </div>
                               ) : (
-                                <div className="h-10 flex items-center justify-center text-slate-300 dark:text-slate-700 text-[10px]">
-                                  Free
+                                <div className="h-11 flex items-center justify-center text-slate-300 dark:text-slate-700 text-[10px]">
+                                  —
                                 </div>
                               )}
                             </td>
