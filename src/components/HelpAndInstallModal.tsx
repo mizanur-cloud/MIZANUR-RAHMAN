@@ -30,6 +30,7 @@ interface HelpAndInstallModalProps {
   onOpenExport: () => void;
   onOpenSmartImport: () => void;
   onOpenSettings: () => void;
+  canEdit?: boolean;
 }
 
 export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
@@ -39,6 +40,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
   onOpenExport,
   onOpenSmartImport,
   onOpenSettings,
+  canEdit = true,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'apk' | 'usage'>('apk');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -470,15 +472,17 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                   সরাসরি অ্যাকশন শুরু করুন:
                 </span>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onOpenAutoGenerate();
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
-                  >
-                    Auto-Fill রুটিন
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenAutoGenerate();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
+                    >
+                      Auto-Fill রুটিন
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       onClose();
@@ -488,24 +492,28 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                   >
                     ডাউনলোড / প্রিন্ট
                   </button>
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onOpenSmartImport();
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition"
-                  >
-                    ফাইল ইম্পোর্ট
-                  </button>
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onOpenSettings();
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 transition"
-                  >
-                    স্কুল সেটিংস
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenSmartImport();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition"
+                    >
+                      ফাইল ইম্পোর্ট
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenSettings();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 transition"
+                    >
+                      স্কুল সেটিংস
+                    </button>
+                  )}
                 </div>
               </div>
 

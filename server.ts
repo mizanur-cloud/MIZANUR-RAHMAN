@@ -1,6 +1,7 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import http from 'http';
+import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -12,11 +13,227 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const SUPER_ADMIN_EMAIL = 'ratan.mizan@gmail.com';
+
+interface FirebaseAppletConfig {
+  projectId: string;
+  firestoreDatabaseId?: string;
+}
+
+function loadFirebaseAppletConfig(): FirebaseAppletConfig | null {
+  try {
+    const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
+    if (fs.existsSync(cfgPath)) {
+      return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+    }
+  } catch {
+    // Ignore read error
+  }
+  return null;
+}
+
+const firebaseCfg = loadFirebaseAppletConfig();
+
+function emailToDocId(email: string): string {
+  return email
+    .trim()
+    .toLowerCase()
+    .replace(/@/g, '-at-')
+    .replace(/\./g, '-dot-')
+    .replace(/[^a-z0-9_-]/g, '-');
+}
+
+let cachedCerts: { certs: Record<string, string>; expiresAt: number } | null = null;
+
+async function getGooglePublicCerts(): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (cachedCerts && now < cachedCerts.expiresAt) {
+    return cachedCerts.certs;
+  }
+  const resp = await fetch(
+    'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+  );
+  if (!resp.ok) {
+    throw new Error('Failed to fetch Firebase public signing certificates');
+  }
+  const cacheControl = resp.headers.get('cache-control') || '';
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+  const maxAgeMs = maxAgeMatch ? Number(maxAgeMatch[1]) * 1000 : 3600 * 1000;
+  const certs = (await resp.json()) as Record<string, string>;
+  cachedCerts = { certs, expiresAt: now + maxAgeMs };
+  return certs;
+}
+
+function decodeBase64Url(input: string): Buffer {
+  const norm = input.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = norm.length % 4 === 0 ? '' : '='.repeat(4 - (norm.length % 4));
+  return Buffer.from(norm + pad, 'base64');
+}
+
+async function verifyFirebaseIdToken(token: string) {
+  if (!firebaseCfg?.projectId) {
+    throw new Error('Firebase project configuration missing on server');
+  }
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Malformed bearer token');
+  }
+  const [headerB64, payloadB64, sigB64] = parts;
+  const header = JSON.parse(decodeBase64Url(headerB64).toString('utf8'));
+  const payload = JSON.parse(decodeBase64Url(payloadB64).toString('utf8'));
+
+  if (header.alg !== 'RS256' || !header.kid) {
+    throw new Error('Invalid token algorithm or key id');
+  }
+
+  const certs = await getGooglePublicCerts();
+  const cert = certs[header.kid];
+  if (!cert) {
+    throw new Error('Unknown signing key id');
+  }
+
+  const verifier = crypto.createVerify('RSA-SHA256');
+  verifier.update(`${headerB64}.${payloadB64}`);
+  verifier.end();
+  const isValidSig = verifier.verify(cert, decodeBase64Url(sigB64));
+  if (!isValidSig) {
+    throw new Error('Invalid token signature');
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (payload.aud !== firebaseCfg.projectId) {
+    throw new Error('Invalid token audience');
+  }
+  if (payload.iss !== `https://securetoken.google.com/${firebaseCfg.projectId}`) {
+    throw new Error('Invalid token issuer');
+  }
+  if (typeof payload.exp !== 'number' || payload.exp <= nowSec) {
+    throw new Error('Token expired');
+  }
+  if (!payload.sub || typeof payload.sub !== 'string') {
+    throw new Error('Missing token subject');
+  }
+  if (!payload.email || payload.email_verified !== true) {
+    throw new Error('Verified email required');
+  }
+
+  return payload as {
+    sub: string;
+    email: string;
+    email_verified: boolean;
+    name?: string;
+  };
+}
+
+interface AuthenticatedReq extends Request {
+  rbacUser?: {
+    uid: string;
+    email: string;
+    role: 'super_admin' | 'admin' | 'viewer';
+    status: 'active' | 'paused' | 'blocked' | 'none';
+  };
+}
+
+async function resolveUserRoleAndStatus(
+  email: string,
+  bearerToken: string
+): Promise<{ role: 'super_admin' | 'admin' | 'viewer'; status: 'active' | 'paused' | 'blocked' | 'none' }> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (cleanEmail === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    return { role: 'super_admin', status: 'active' };
+  }
+  if (!firebaseCfg?.projectId) {
+    return { role: 'viewer', status: 'none' };
+  }
+  const dbId = firebaseCfg.firestoreDatabaseId || '(default)';
+  const docId = emailToDocId(cleanEmail);
+  const url = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${dbId}/documents/admins/${docId}`;
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${bearerToken}` },
+  });
+  if (!resp.ok) {
+    return { role: 'viewer', status: 'none' };
+  }
+  const docJson = (await resp.json()) as {
+    fields?: {
+      role?: { stringValue?: string };
+      status?: { stringValue?: string };
+    };
+  };
+  const roleVal = docJson.fields?.role?.stringValue;
+  const statusVal = docJson.fields?.status?.stringValue;
+  if (roleVal === 'admin' && (statusVal === 'active' || statusVal === 'paused' || statusVal === 'blocked')) {
+    return { role: 'admin', status: statusVal };
+  }
+  return { role: 'viewer', status: 'none' };
+}
+
+async function requireActiveAdmin(req: AuthenticatedReq, res: Response, next: NextFunction) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: 'অননুমোদিত অনুরোধ: এই অপারেশনের জন্য অনুমোদিত Admin বা Super Admin লগইন প্রয়োজন।',
+      });
+    }
+    const token = authHeader.slice(7).trim();
+    const verified = await verifyFirebaseIdToken(token);
+    const { role, status } = await resolveUserRoleAndStatus(verified.email, token);
+
+    if (role === 'viewer') {
+      return res.status(403).json({
+        error: 'অ্যাক্সেস অস্বীকৃত (403): সাধারণ ভিউয়ার কোনো এডমিন অপারেশন চালাতে পারবেন না।',
+      });
+    }
+    if (role === 'admin' && status !== 'active') {
+      return res.status(403).json({
+        error:
+          status === 'blocked'
+            ? 'অ্যাক্সেস ব্লক করা হয়েছে: সুপার এডমিন আপনার অ্যাকাউন্ট ব্লক করেছেন।'
+            : 'অ্যাক্সেস সাময়িকভাবে স্থগিত: সুপার এডমিন আপনার কাজ সাময়িকভাবে বন্ধ (Paused) রেখেছেন।',
+      });
+    }
+
+    req.rbacUser = {
+      uid: verified.sub,
+      email: verified.email.toLowerCase(),
+      role,
+      status,
+    };
+    return next();
+  } catch (err: any) {
+    return res.status(401).json({
+      error: `সেশন যাচাই ব্যর্থ হয়েছে: ${err?.message || 'অবৈধ টোকেন'}`,
+    });
+  }
+}
+
 const app = express();
 const port = 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Server-side RBAC session verification endpoint
+app.get('/api/auth/status', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.json({ authenticated: false, role: 'viewer', status: 'none' });
+    }
+    const token = authHeader.slice(7).trim();
+    const verified = await verifyFirebaseIdToken(token);
+    const { role, status } = await resolveUserRoleAndStatus(verified.email, token);
+    return res.json({
+      authenticated: true,
+      email: verified.email.toLowerCase(),
+      role,
+      status,
+    });
+  } catch {
+    return res.json({ authenticated: false, role: 'viewer', status: 'none' });
+  }
+});
 
 // Direct APK download route with appropriate attachment headers
 app.get(['/IDSC_Routine.apk', '/api/download-apk'], (_req: Request, res: Response) => {
@@ -31,8 +248,8 @@ app.get(['/IDSC_Routine.apk', '/api/download-apk'], (_req: Request, res: Respons
   return res.status(404).send('APK file not found. Please refresh.');
 });
 
-// API route to parse schedule files (Image, PDF, Word text) using Gemini
-app.post('/api/parse-schedule-file', async (req: Request, res: Response) => {
+// Protected API route to parse schedule files (Active Admin & Super Admin only)
+app.post('/api/parse-schedule-file', requireActiveAdmin, async (req: AuthenticatedReq, res: Response) => {
   try {
     const { base64Data, mimeType, fileName } = req.body;
 

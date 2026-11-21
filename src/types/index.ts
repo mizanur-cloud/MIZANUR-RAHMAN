@@ -132,3 +132,48 @@ export interface RoutineConflict {
   classId?: string;
   sectionId?: string;
 }
+
+// 3-Tier Role-Based Access Control (RBAC) & Audit Trail
+export type UserRole = 'super_admin' | 'admin' | 'viewer';
+export type AdminStatus = 'active' | 'paused' | 'blocked';
+
+export interface AdminAccount {
+  id: string;
+  email: string;
+  name: string;
+  designation?: string;
+  role: 'admin';
+  status: AdminStatus;
+  statusReason?: string;
+  uid?: string;
+  createdAt: any;
+  updatedAt: any;
+  createdByEmail: string;
+  lastLoginAt?: any;
+}
+
+export type AuditActionType =
+  | 'routine_update'
+  | 'routine_generate'
+  | 'routine_autofix'
+  | 'routine_import'
+  | 'routine_reset'
+  | 'class_update'
+  | 'teacher_update'
+  | 'subject_update'
+  | 'settings_update'
+  | 'admin_added'
+  | 'admin_paused'
+  | 'admin_blocked'
+  | 'admin_activated'
+  | 'admin_removed';
+
+export interface AuditLogEntry {
+  id: string;
+  action: AuditActionType;
+  targetSummary: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+  timestamp: any;
+}

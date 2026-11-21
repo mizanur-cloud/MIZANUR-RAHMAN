@@ -77,6 +77,7 @@ interface ClassRoutineViewProps {
   ) => void;
   settings?: SchoolSettings;
   fullAppState: AppState;
+  readOnly?: boolean;
 }
 
 export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
@@ -102,6 +103,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   onUpdateSectionSubjectConfig,
   settings,
   fullAppState,
+  readOnly = false,
 }) => {
   const selectedClass = classes.find(c => c.id === selectedClassId) || classes[0];
   const selectedSection =
@@ -318,51 +320,55 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
 
           {/* Action Toolbar */}
           <div className="no-print flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSwapMode(prev => !prev);
-                setSwapSource(null);
-                setSwapError(null);
-              }}
-              title="দুটি পিরিয়ড নিরাপদভাবে অদলবদল করুন (ক্ল্যাশ চেকসহ)"
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 ${
-                isSwapMode
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
-              }`}
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              <span>{isSwapMode ? 'বদল মোড চালু' : 'স্লট বদল (Swap)'}</span>
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSwapMode(prev => !prev);
+                    setSwapSource(null);
+                    setSwapError(null);
+                  }}
+                  title="দুটি পিরিয়ড নিরাপদভাবে অদলবদল করুন (ক্ল্যাশ চেকসহ)"
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 ${
+                    isSwapMode
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                  }`}
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                  <span>{isSwapMode ? 'বদল মোড চালু' : 'স্লট বদল (Swap)'}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedClass && selectedSection) {
-                  onAutoGenerateSection(selectedClass.id, selectedSection.id);
-                }
-              }}
-              title="Automatically generate a conflict-free routine for this section"
-              className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Auto-Fill Section</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedClass && selectedSection) {
+                      onAutoGenerateSection(selectedClass.id, selectedSection.id);
+                    }
+                  }}
+                  title="Automatically generate a conflict-free routine for this section"
+                  className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Auto-Fill Section</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedClass) {
-                  onAutoGenerateClass(selectedClass.id);
-                }
-              }}
-              title="Generate routines for all sections in this class"
-              className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Auto-Fill All {selectedClass?.name}</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedClass) {
+                      onAutoGenerateClass(selectedClass.id);
+                    }
+                  }}
+                  title="Generate routines for all sections in this class"
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Auto-Fill All {selectedClass?.name}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -392,7 +398,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
               <span>PDF</span>
             </button>
 
-            {isConfirmingClear ? (
+            {!readOnly && (isConfirmingClear ? (
               <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/60 p-1 rounded-lg border border-rose-200 dark:border-rose-800">
                 <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold px-1">
                   রুটিন মুছবেন?
@@ -426,7 +432,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-            )}
+            ))}
           </div>
         </div>
 
@@ -614,7 +620,9 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                             return (
                               <div
                                 onClick={() => handleSlotClick(day, period.periodIndex)}
-                                className={`group relative p-2 rounded-lg border text-left cursor-pointer transition-all h-14 flex flex-col justify-between ${
+                                className={`group relative p-2 rounded-lg border text-left transition-all h-14 flex flex-col justify-between ${
+                                  readOnly ? 'cursor-default' : 'cursor-pointer'
+                                } ${
                                   isSelectedSwapSource
                                     ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-500'
                                     : hasConflict
@@ -632,7 +640,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                     />
                                     <span className="truncate">{subject?.name || 'Class'}</span>
                                   </div>
-                                  {!isSwapMode && (
+                                  {!readOnly && !isSwapMode && (
                                     <button
                                       type="button"
                                       onClick={e => {
@@ -661,7 +669,9 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                         ) : slotEntries.length > 1 ? (
                           <div
                             onClick={() => handleSlotClick(day, period.periodIndex)}
-                            className={`p-1 rounded-lg border cursor-pointer transition-all min-h-14 flex flex-col justify-center gap-1 ${
+                            className={`p-1 rounded-lg border transition-all min-h-14 flex flex-col justify-center gap-1 ${
+                              readOnly ? 'cursor-default' : 'cursor-pointer'
+                            } ${
                               isSelectedSwapSource
                                 ? 'bg-indigo-100 dark:bg-indigo-950 border-indigo-500 ring-2 ring-indigo-500'
                                 : 'border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/40 dark:bg-indigo-950/30 hover:border-blue-400'
@@ -693,7 +703,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                       ({teacher?.initials || '—'})
                                     </span>
                                   </div>
-                                  {!isSwapMode && (
+                                  {!readOnly && !isSwapMode && (
                                     <button
                                       type="button"
                                       onClick={e => {
@@ -709,6 +719,10 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                 </div>
                               );
                             })}
+                          </div>
+                        ) : readOnly ? (
+                          <div className="w-full h-14 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-300 dark:text-slate-700">
+                            —
                           </div>
                         ) : (
                           <button
@@ -753,37 +767,39 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
               </span>
             )}
           </div>
-          <div className="no-print flex items-center gap-2 flex-wrap">
-            {!isPlayNur && onUpdateSectionSubjects && (
-              <button
-                type="button"
-                onClick={() => setShowSectionSubjectPicker(prev => !prev)}
-                className={`text-xs font-semibold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors ${
-                  showSectionSubjectPicker
-                    ? 'bg-blue-700 text-white border-blue-700'
-                    : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-                <span>সেকশন বিষয় নির্বাচন ({selectedSection?.name})</span>
-              </button>
-            )}
-            {onOpenSubjectMgmt && (
-              <button
-                type="button"
-                onClick={onOpenSubjectMgmt}
-                className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors"
-                title="Add new subjects or change subjects for this class"
-              >
-                <Edit className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Edit / Add Subjects</span>
-              </button>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="no-print flex items-center gap-2 flex-wrap">
+              {!isPlayNur && onUpdateSectionSubjects && (
+                <button
+                  type="button"
+                  onClick={() => setShowSectionSubjectPicker(prev => !prev)}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors ${
+                    showSectionSubjectPicker
+                      ? 'bg-blue-700 text-white border-blue-700'
+                      : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  <span>সেকশন বিষয় নির্বাচন ({selectedSection?.name})</span>
+                </button>
+              )}
+              {onOpenSubjectMgmt && (
+                <button
+                  type="button"
+                  onClick={onOpenSubjectMgmt}
+                  className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors"
+                  title="Add new subjects or change subjects for this class"
+                >
+                  <Edit className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Edit / Add Subjects</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Inline Section-wise Subject Selection Drawer */}
-        {!isPlayNur && showSectionSubjectPicker && selectedClass && selectedSection && onUpdateSectionSubjects && (
+        {!readOnly && !isPlayNur && showSectionSubjectPicker && selectedClass && selectedSection && onUpdateSectionSubjects && (
           <div className="no-print mb-4 p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="text-xs text-slate-800 dark:text-slate-200">

@@ -8,6 +8,7 @@ import {
   Teacher,
   TimetableEntry,
 } from '../types';
+import { getFreshIdToken } from '../services/rbacService';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -328,9 +329,13 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
     reader.onload = async e => {
       try {
         const base64Data = (e.target?.result as string).split(',')[1];
+        const idToken = await getFreshIdToken();
         const res = await fetch('/api/parse-schedule-file', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
           body: JSON.stringify({
             base64Data,
             mimeType: file.type || 'application/octet-stream',

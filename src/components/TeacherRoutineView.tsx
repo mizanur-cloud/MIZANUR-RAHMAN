@@ -46,6 +46,7 @@ interface TeacherRoutineViewProps {
   onOpenEditSlot: (classId: string, sectionId: string, day: DayOfWeek, periodIndex: number) => void;
   onClearSlot: (entryId: string) => void;
   fullAppState: AppState;
+  readOnly?: boolean;
 }
 
 export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
@@ -62,6 +63,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
   onOpenEditSlot,
   onClearSlot,
   fullAppState,
+  readOnly = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
@@ -410,7 +412,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                     <th className="py-3 px-4 font-semibold">Section</th>
                     <th className="py-3 px-4 font-semibold">Subject</th>
                     <th className="py-3 px-4 font-semibold">Room</th>
-                    <th className="no-print py-3 px-4 font-semibold text-right">Actions</th>
+                    {!readOnly && <th className="no-print py-3 px-4 font-semibold text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
@@ -457,28 +459,30 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                         <td className="py-3 px-4 text-slate-500 font-mono">
                           {entry.room || sec?.roomNumber || '—'}
                         </td>
-                        <td className="no-print py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                onOpenEditSlot(entry.classId, entry.sectionId, entry.day, entry.periodIndex)
-                              }
-                              title="Edit this entry"
-                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onClearSlot(entry.id)}
-                              title="Remove entry from schedule"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+                        {!readOnly && (
+                          <td className="no-print py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onOpenEditSlot(entry.classId, entry.sectionId, entry.day, entry.periodIndex)
+                                }
+                                title="Edit this entry"
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onClearSlot(entry.id)}
+                                title="Remove entry from schedule"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -574,10 +578,14 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                             className="p-1 text-center align-middle border-r border-slate-100 dark:border-slate-800/60 last:border-r-0"
                           >
                             <div
-                              onClick={() =>
-                                onOpenEditSlot(match.classId, match.sectionId, day, period.periodIndex)
-                              }
-                              className={`p-1.5 rounded-lg border text-left cursor-pointer transition-all h-14 flex flex-col justify-between ${
+                              onClick={() => {
+                                if (!readOnly) {
+                                  onOpenEditSlot(match.classId, match.sectionId, day, period.periodIndex);
+                                }
+                              }}
+                              className={`p-1.5 rounded-lg border text-left transition-all h-14 flex flex-col justify-between ${
+                                readOnly ? 'cursor-default' : 'cursor-pointer'
+                              } ${
                                 hasConflict
                                   ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
                                   : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-400'
@@ -616,9 +624,11 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                           className="p-1 text-center align-middle border-r border-slate-100 dark:border-slate-800/60 last:border-r-0"
                         >
                           <div
-                            onClick={() =>
-                              onOpenEditSlot(firstMatch.classId, firstMatch.sectionId, day, period.periodIndex)
-                            }
+                            onClick={() => {
+                              if (!readOnly) {
+                                onOpenEditSlot(firstMatch.classId, firstMatch.sectionId, day, period.periodIndex);
+                              }
+                            }}
                             title={slotMatches
                               .map(m => {
                                 const c = classMap.get(m.classId);
@@ -626,7 +636,9 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                                 return `${c?.name} (${s?.name})`;
                               })
                               .join(', ')}
-                            className={`p-1.5 rounded-lg border text-left cursor-pointer transition-all min-h-[56px] flex flex-col justify-between ${
+                            className={`p-1.5 rounded-lg border text-left transition-all min-h-[56px] flex flex-col justify-between ${
+                              readOnly ? 'cursor-default' : 'cursor-pointer'
+                            } ${
                               hasConflict
                                 ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
                                 : allHindu

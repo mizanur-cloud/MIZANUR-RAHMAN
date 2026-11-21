@@ -19,6 +19,7 @@ interface MasterTimetableViewProps {
   periodTimings: PeriodTiming[];
   entries: TimetableEntry[];
   onOpenEditSlot: (classId: string, sectionId: string, day: DayOfWeek, periodIndex: number) => void;
+  readOnly?: boolean;
 }
 
 export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
@@ -29,6 +30,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
   periodTimings,
   entries,
   onOpenEditSlot,
+  readOnly = false,
 }) => {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(workingDays[0] || 'Sunday');
   const [pivotMode, setPivotMode] = useState<'byClass' | 'byTeacher'>('byClass');
@@ -375,10 +377,14 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                   const tch = teacherMap.get(match.teacherId);
                                   return (
                                     <div
-                                      onClick={() =>
-                                        onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
-                                      }
-                                      className="p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all h-11 flex flex-col justify-between"
+                                      onClick={() => {
+                                        if (!readOnly) {
+                                          onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex);
+                                        }
+                                      }}
+                                      className={`p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left transition-all h-11 flex flex-col justify-between ${
+                                        readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                      }`}
                                     >
                                       <div className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 truncate flex items-center gap-1">
                                         <span
@@ -395,10 +401,14 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                 })()
                               ) : matches.length > 1 ? (
                                 <div
-                                  onClick={() =>
-                                    onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
-                                  }
-                                  className="p-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 hover:border-blue-500 cursor-pointer text-left transition-all min-h-11 flex flex-col justify-center gap-0.5"
+                                  onClick={() => {
+                                    if (!readOnly) {
+                                      onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex);
+                                    }
+                                  }}
+                                  className={`p-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-left transition-all min-h-11 flex flex-col justify-center gap-0.5 ${
+                                    readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                  }`}
                                 >
                                   {matches.map(m => {
                                     const sub = subjectMap.get(m.subjectId);
@@ -414,6 +424,10 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                       </div>
                                     );
                                   })}
+                                </div>
+                              ) : readOnly ? (
+                                <div className="h-11 rounded border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-700 text-[10px]">
+                                  —
                                 </div>
                               ) : (
                                 <div
@@ -475,10 +489,14 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                             >
                               {match ? (
                                 <div
-                                  onClick={() =>
-                                    onOpenEditSlot(match.classId, match.sectionId, selectedDay, period.periodIndex)
-                                  }
-                                  className="p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-500 cursor-pointer text-left transition-all h-11 flex flex-col justify-between"
+                                  onClick={() => {
+                                    if (!readOnly) {
+                                      onOpenEditSlot(match.classId, match.sectionId, selectedDay, period.periodIndex);
+                                    }
+                                  }}
+                                  className={`p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left transition-all h-11 flex flex-col justify-between ${
+                                    readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                  }`}
                                 >
                                   <div className="font-semibold text-[10px] text-blue-700 dark:text-blue-300 truncate">
                                     {cls?.name} · {sec?.name}

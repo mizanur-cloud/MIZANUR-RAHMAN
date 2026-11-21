@@ -1,0 +1,307 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Identity & Validation Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 160 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.size() <= 160
+        && request.auth.token.email_verified == true;
+    }
+
+    function currentEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function currentEmailKey() {
+      return request.auth.token.email.lower()
+        .replace('@', '-at-')
+        .replace('[.]', '-dot-')
+        .replace('[^a-z0-9_-]', '-');
+    }
+
+    // Bootstrapped Super Admin (zero DB lookups; safe inside list rules)
+    function isSuperAdmin() {
+      return isVerifiedUser() && currentEmail() == 'ratan.mizan@gmail.com';
+    }
+
+    // Active Admin check (enforces existence, role == 'admin', and status == 'active')
+    function isActiveAdmin() {
+      return isVerifiedUser()
+        && exists(/databases/$(database)/documents/admins/$(currentEmailKey()))
+        && get(/databases/$(database)/documents/admins/$(currentEmailKey())).data.role == 'admin'
+        && get(/databases/$(database)/documents/admins/$(currentEmailKey())).data.status == 'active';
+    }
+
+    function canEditRoutine() {
+      return isSuperAdmin() || isActiveAdmin();
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+    function isValidAdminAccount(data) {
+      return data.keys().hasAll([
+          'id', 'email', 'name', 'role', 'status', 'createdAt', 'updatedAt', 'createdByEmail'
+        ])
+        && data.keys().hasOnly([
+          'id', 'email', 'name', 'designation', 'role', 'status', 'statusReason',
+          'uid', 'createdAt', 'updatedAt', 'createdByEmail', 'lastLoginAt'
+        ])
+        && isValidId(data.id)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.email == data.email.lower()
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && (!('designation' in data) || (data.designation is string && data.designation.size() <= 100))
+        && data.role == 'admin'
+        && data.status in ['active', 'paused', 'blocked']
+        && (!('statusReason' in data) || (data.statusReason is string && data.statusReason.size() <= 300))
+        && (!('uid' in data) || (data.uid is string && data.uid.size() <= 128))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.createdByEmail is string && data.createdByEmail.size() >= 3 && data.createdByEmail.size() <= 160
+        && (!('lastLoginAt' in data) || data.lastLoginAt is timestamp);
+    }
+
+    function isValidRoutineMetadata(data) {
+      return data.keys().hasAll([
+          'classes', 'teachers', 'subjects', 'settings', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.keys().hasOnly([
+          'classes', 'teachers', 'subjects', 'settings', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.classes is list && data.classes.size() <= 30
+        && (data.classes.size() == 0 || data.classes[0] is map)
+        && data.teachers is list && data.teachers.size() <= 200
+        && (data.teachers.size() == 0 || data.teachers[0] is map)
+        && data.subjects is list && data.subjects.size() <= 100
+        && (data.subjects.size() == 0 || data.subjects[0] is map)
+        && data.settings is map
+        && data.updatedAt is timestamp
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100;
+    }
+
+    function isValidRoutineSchedule(data) {
+      return data.keys().hasAll([
+          'entries', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.keys().hasOnly([
+          'entries', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.entries is list && data.entries.size() <= 4000
+        && (data.entries.size() == 0 || data.entries[0] is map)
+        && data.updatedAt is timestamp
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100;
+    }
+
+    function isValidStaffContacts(data) {
+      return data.keys().hasAll(['contacts', 'updatedAt', 'updatedByEmail'])
+        && data.keys().hasOnly(['contacts', 'updatedAt', 'updatedByEmail'])
+        && data.contacts is map
+        && data.updatedAt is timestamp
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'action', 'targetSummary', 'actorEmail', 'actorName', 'actorRole', 'timestamp'
+        ])
+        && data.keys().hasOnly([
+          'id', 'action', 'targetSummary', 'actorEmail', 'actorName', 'actorRole', 'timestamp'
+        ])
+        && isValidId(data.id)
+        && data.action in [
+          'routine_update',
+          'routine_generate',
+          'routine_autofix',
+          'routine_import',
+          'routine_reset',
+          'class_update',
+          'teacher_update',
+          'subject_update',
+          'settings_update',
+          'admin_added',
+          'admin_paused',
+          'admin_blocked',
+          'admin_activated',
+          'admin_removed'
+        ]
+        && data.targetSummary is string && data.targetSummary.size() >= 1 && data.targetSummary.size() <= 400
+        && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 160
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100
+        && data.actorRole in ['super_admin', 'admin']
+        && data.timestamp is timestamp;
+    }
+
+    // 4. Collection Match Blocks
+    match /admins/{adminId} {
+      // Single-doc get: Super Admin OR the verified user checking their own admin record
+      allow get: if isValidId(adminId) && (
+        isSuperAdmin() || (isVerifiedUser() && adminId == currentEmailKey())
+      );
+
+      // List all admins: strictly Super Admin only (0 get/exists calls)
+      allow list: if isSuperAdmin();
+
+      // Create admin: strictly Super Admin only
+      allow create: if isSignedIn()
+        && isValidId(adminId)
+        && isValidAdminAccount(incoming())
+        && incoming().id == adminId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isSuperAdmin()
+        && incoming().createdByEmail == currentEmail();
+
+      // Update admin:
+      // Tier 1: Super Admin can change status (active/paused/blocked), statusReason, name, designation
+      // Tier 2: Active Admin can only record their own uid & lastLoginAt on login
+      allow update: if isSignedIn() && isValidId(adminId) && isValidAdminAccount(incoming()) && (
+        (
+          incoming().id == existing().id
+          && incoming().email == existing().email
+          && incoming().role == existing().role
+          && incoming().createdAt == existing().createdAt
+          && incoming().createdByEmail == existing().createdByEmail
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'statusReason', 'name', 'designation', 'updatedAt'
+          ])
+          && isSuperAdmin()
+        )
+        ||
+        (
+          isVerifiedUser()
+          && adminId == currentEmailKey()
+          && existing().status == 'active'
+          && incoming().id == existing().id
+          && incoming().email == existing().email
+          && incoming().role == existing().role
+          && incoming().status == existing().status
+          && incoming().name == existing().name
+          && incoming().createdAt == existing().createdAt
+          && incoming().createdByEmail == existing().createdByEmail
+          && incoming().uid == request.auth.uid
+          && incoming().lastLoginAt == request.time
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'uid', 'lastLoginAt', 'updatedAt'
+          ])
+        )
+      );
+
+      // Delete admin: strictly Super Admin only
+      allow delete: if isValidId(adminId) && isSuperAdmin();
+    }
+
+    // Published routine metadata (classes, subjects, settings, public teachers without PII)
+    match /routine_public/metadata {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidRoutineMetadata(incoming())
+        && incoming().updatedAt == request.time
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow update: if isSignedIn()
+        && isValidRoutineMetadata(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'classes', 'teachers', 'subjects', 'settings', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow delete: if false;
+    }
+
+    // Published routine schedule entries
+    match /routine_public/schedule {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidRoutineSchedule(incoming())
+        && incoming().updatedAt == request.time
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow update: if isSignedIn()
+        && isValidRoutineSchedule(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'entries', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow delete: if false;
+    }
+
+    // Private teacher contact directory (emails & phone numbers)
+    match /routine_private/staff_contacts {
+      allow get: if canEditRoutine();
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidStaffContacts(incoming())
+        && incoming().updatedAt == request.time
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow update: if isSignedIn()
+        && isValidStaffContacts(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'contacts', 'updatedAt', 'updatedByEmail'
+        ])
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow delete: if false;
+    }
+
+    // Immutable Audit & Security Activity Logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && isSuperAdmin();
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidAuditLog(incoming())
+        && incoming().id == logId
+        && incoming().timestamp == request.time
+        && isVerifiedUser()
+        && incoming().actorEmail == currentEmail()
+        && canEditRoutine()
+        && ((isSuperAdmin() && incoming().actorRole == 'super_admin')
+          || (!isSuperAdmin() && incoming().actorRole == 'admin'));
+      allow update, delete: if false;
+    }
+
+    // Firestore connectivity check document
+    match /test/connection {
+      allow get: if true;
+      allow list, write: if false;
+    }
+  }
+}

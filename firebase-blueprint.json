@@ -1,0 +1,233 @@
+{
+  "entities": {
+    "AdminAccount": {
+      "title": "AdminAccount",
+      "description": "An approved school routine administrator managed exclusively by the Super Admin.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Deterministic email-derived document ID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "designation": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "blocked"]
+        },
+        "statusReason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdByEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "email", "name", "role", "status", "createdAt", "updatedAt", "createdByEmail"]
+    },
+    "RoutineMetadata": {
+      "title": "RoutineMetadata",
+      "description": "Published classes, subjects, bell/school settings, and public teacher display data (PII stripped).",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array"
+        },
+        "teachers": {
+          "type": "array"
+        },
+        "subjects": {
+          "type": "array"
+        },
+        "settings": {
+          "type": "object"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["classes", "teachers", "subjects", "settings", "updatedAt", "updatedByEmail", "updatedByName"]
+    },
+    "RoutineSchedule": {
+      "title": "RoutineSchedule",
+      "description": "Published weekly timetable period assignments across all classes and sections.",
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["entries", "updatedAt", "updatedByEmail", "updatedByName"]
+    },
+    "StaffContactsDoc": {
+      "title": "StaffContactsDoc",
+      "description": "Private faculty contact info (emails and phone numbers) isolated from public viewers.",
+      "type": "object",
+      "properties": {
+        "contacts": {
+          "type": "object"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        }
+      },
+      "required": ["contacts", "updatedAt", "updatedByEmail"]
+    },
+    "AuditLogEntry": {
+      "title": "AuditLogEntry",
+      "description": "Immutable activity and security audit log entry.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "routine_update",
+            "routine_generate",
+            "routine_autofix",
+            "routine_import",
+            "routine_reset",
+            "class_update",
+            "teacher_update",
+            "subject_update",
+            "settings_update",
+            "admin_added",
+            "admin_paused",
+            "admin_blocked",
+            "admin_activated",
+            "admin_removed"
+          ]
+        },
+        "targetSummary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "actorEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "actorRole": {
+          "type": "string",
+          "enum": ["super_admin", "admin"]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "action", "targetSummary", "actorEmail", "actorName", "actorRole", "timestamp"]
+    },
+    "ConnectionCheck": {
+      "title": "ConnectionCheck",
+      "description": "Read-only connection health check document.",
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminAccount" },
+      "description": "Approved admins with active/paused/blocked status controlled by Super Admin."
+    },
+    "/routine_public/metadata": {
+      "schema": { "$ref": "#/entities/RoutineMetadata" },
+      "description": "Publicly readable school routine metadata without teacher PII."
+    },
+    "/routine_public/schedule": {
+      "schema": { "$ref": "#/entities/RoutineSchedule" },
+      "description": "Publicly readable school timetable entries."
+    },
+    "/routine_private/staff_contacts": {
+      "schema": { "$ref": "#/entities/StaffContactsDoc" },
+      "description": "Protected teacher email and phone directory accessible only to active admins and Super Admin."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogEntry" },
+      "description": "Append-only audit trail of routine and RBAC changes."
+    },
+    "/test/{docId}": {
+      "schema": { "$ref": "#/entities/ConnectionCheck" },
+      "description": "Firestore connectivity probe."
+    }
+  }
+}

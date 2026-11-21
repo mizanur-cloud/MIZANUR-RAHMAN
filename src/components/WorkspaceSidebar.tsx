@@ -12,6 +12,8 @@ import {
   HelpCircle,
   ShieldCheck,
   AlertTriangle,
+  Shield,
+  Lock,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -21,6 +23,8 @@ interface WorkspaceSidebarProps {
   totalEntries: number;
   errorCount: number;
   warningCount: number;
+  canEdit: boolean;
+  isSuperAdmin: boolean;
   onOpenClassMgmt: () => void;
   onOpenTeacherMgmt: () => void;
   onOpenSubjectMgmt: () => void;
@@ -28,6 +32,7 @@ interface WorkspaceSidebarProps {
   onOpenSmartImport: () => void;
   onOpenHelpAndInstall: () => void;
   onOpenCompliance: () => void;
+  onOpenControlPanel: () => void;
 }
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
@@ -36,6 +41,8 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   totalEntries,
   errorCount,
   warningCount,
+  canEdit,
+  isSuperAdmin,
   onOpenClassMgmt,
   onOpenTeacherMgmt,
   onOpenSubjectMgmt,
@@ -43,6 +50,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   onOpenSmartImport,
   onOpenHelpAndInstall,
   onOpenCompliance,
+  onOpenControlPanel,
 }) => {
   const [copiedShareLink, setCopiedShareLink] = useState(false);
 
@@ -62,51 +70,80 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     <aside className="no-print w-full lg:w-60 shrink-0 space-y-4">
       {/* Desktop vertical panel; horizontal scrollable bar on mobile/tablet */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-4">
-        {/* Academic Setup */}
-        <div>
-          <div className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
-            Academic Setup
+        {/* Super Admin Control Panel Shortcut */}
+        {isSuperAdmin && (
+          <>
+            <div>
+              <div className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-blue-600 dark:text-blue-400">
+                Security & RBAC
+              </div>
+              <button
+                type="button"
+                onClick={onOpenControlPanel}
+                className="w-full px-2.5 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap shadow-xs"
+              >
+                <Shield className="w-4 h-4 shrink-0" />
+                <span className="truncate">Control Panel (Admins)</span>
+              </button>
+            </div>
+            <div className="border-t border-slate-100 dark:border-slate-800" />
+          </>
+        )}
+
+        {/* Academic Setup (Editors only) */}
+        {canEdit ? (
+          <>
+            <div>
+              <div className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                Academic Setup
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1">
+                <button
+                  type="button"
+                  onClick={onOpenClassMgmt}
+                  className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+                >
+                  <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="truncate">Classes (Play–10)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenTeacherMgmt}
+                  className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+                >
+                  <UserCheck className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <span className="truncate">Faculty & Teachers</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenSubjectMgmt}
+                  className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+                >
+                  <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span className="truncate">Subjects & Quotas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+                >
+                  <SettingsIcon className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
+                  <span className="truncate">Bell & Backup Settings</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-800" />
+          </>
+        ) : (
+          <div className="px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
+            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+            <span>প্রকাশিত রুটিন দেখার মোড (Read-Only)।</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1">
-            <button
-              type="button"
-              onClick={onOpenClassMgmt}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span className="truncate">Classes (Play–10)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenTeacherMgmt}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <UserCheck className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-              <span className="truncate">Faculty & Teachers</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenSubjectMgmt}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-              <span className="truncate">Subjects & Quotas</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <SettingsIcon className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
-              <span className="truncate">Bell & Backup Settings</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 dark:border-slate-800" />
+        )}
 
         {/* Data, Sharing & Print */}
         <div>
@@ -114,14 +151,16 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             Tools & Distribution
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1">
-            <button
-              type="button"
-              onClick={onOpenSmartImport}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <UploadCloud className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="truncate">Import File / Photo</span>
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={onOpenSmartImport}
+                className="w-full px-2.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+              >
+                <UploadCloud className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="truncate">Import File / Photo</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -175,7 +214,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
 
         <div className="border-t border-slate-100 dark:border-slate-800 hidden lg:block" />
 
-        {/* Live Institution Snapshot (Clean tabular typography, no card sandwiches) */}
+        {/* Live Institution Snapshot */}
         <div className="hidden lg:block px-2.5 space-y-2.5">
           <div className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
             Schedule Summary
@@ -202,32 +241,34 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onOpenCompliance}
-            className={`w-full mt-1 px-2.5 py-2 rounded-lg border text-xs font-medium flex items-center justify-between transition-colors ${
-              errorCount > 0
-                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200'
-                : warningCount > 0
-                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200'
-                : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200'
-            }`}
-          >
-            <span className="flex items-center gap-1.5 truncate">
-              {errorCount > 0 || warningCount > 0 ? (
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span className="truncate">
-                {errorCount > 0
-                  ? `${errorCount} Collision${errorCount > 1 ? 's' : ''}`
+          {canEdit && (
+            <button
+              type="button"
+              onClick={onOpenCompliance}
+              className={`w-full mt-1 px-2.5 py-2 rounded-lg border text-xs font-medium flex items-center justify-between transition-colors ${
+                errorCount > 0
+                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200'
                   : warningCount > 0
-                  ? `${warningCount} Pacing Notice${warningCount > 1 ? 's' : ''}`
-                  : 'All Rules Verified'}
+                  ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200'
+                  : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                {errorCount > 0 || warningCount > 0 ? (
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="truncate">
+                  {errorCount > 0
+                    ? `${errorCount} Collision${errorCount > 1 ? 's' : ''}`
+                    : warningCount > 0
+                    ? `${warningCount} Pacing Notice${warningCount > 1 ? 's' : ''}`
+                    : 'All Rules Verified'}
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+          )}
         </div>
       </div>
     </aside>
