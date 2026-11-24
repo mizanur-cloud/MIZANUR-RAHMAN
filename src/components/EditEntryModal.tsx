@@ -15,6 +15,7 @@ import {
   findParallelPartnerSubjectId,
   getCombinedHinduRoom,
   getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
   getExpectedSectionTeacherId,
   getMaxReligionConcurrentSections,
   isAgricultureSubject,
@@ -25,6 +26,7 @@ import {
   isIslamReligionSubject,
   isPlayOrNursery,
   isSubjectSelectedForSection,
+  isTeacherBlockedAtSlot,
   isTeacherBlockTeacher,
 } from '../services/parallelSubjects';
 
@@ -390,6 +392,17 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       otherWeeklySubjectCount + 1 > effectiveWeeklyLimit
   );
 
+  const allowedFixedPeriods =
+    !isPlayNur && currentClass && currentSection && selectedSubjectId
+      ? getEffectiveSubjectFixedPeriods(currentClass, currentSection.id, selectedSubjectId, subjects)
+      : undefined;
+  const fixedPeriodViolation = Boolean(
+    allowedFixedPeriods && allowedFixedPeriods.length > 0 && !allowedFixedPeriods.includes(periodIndex)
+  );
+  const teacherBlockedAtSlot = Boolean(
+    selectedTeacherObj && isTeacherBlockedAtSlot(selectedTeacherObj, day, periodIndex)
+  );
+
   const clashClass = teacherClashEntry ? classes.find(c => c.id === teacherClashEntry.classId) : null;
   const clashSection = clashClass?.sections.find(s => s.id === teacherClashEntry?.sectionId);
 
@@ -593,6 +606,18 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 </div>
               </div>
             )}
+            {fixedPeriodViolation && allowedFixedPeriods && (
+              <div className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-800 dark:text-amber-300">
+                  <strong>নির্দিষ্ট পিরিয়ড সতর্কতা:</strong> "{selectedSubjectObj?.name}" বিষয়টি শুধুমাত্র{' '}
+                  <span className="font-mono font-bold">
+                    {allowedFixedPeriods.map(p => `P${p}`).join(', ')}
+                  </span>{' '}
+                  পিরিয়ডে রাখার জন্য নির্ধারিত রয়েছে।
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Teacher Selection */}
@@ -619,14 +644,19 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 const isCombinedRoomShare = slotMatches.length > 0 && compatibleHindu;
                 const isClassBlockTeacher = Boolean(isPlayNur && currentClass?.blockTeacherIds?.includes(t.id));
                 const isAnyBlockTeacher = isTeacherBlockTeacher(t, classes);
+                const isBlockedHere = isTeacherBlockedAtSlot(t, day, periodIndex);
 
                 return (
                   <option key={t.id} value={t.id} disabled={!isPlayNur && isAnyBlockTeacher}>
                     {t.name} ({t.initials}) - {t.designation}{' '}
                     {isClassBlockTeacher
-                      ? '⭐ [ব্লক শিক্ষক]'
+                      ? isBlockedHere
+                        ? '⭐ [ব্লক শিক্ষক · ⛔ বন্ধ পিরিয়ড]'
+                        : '⭐ [ব্লক শিক্ষক]'
                       : !isPlayNur && isAnyBlockTeacher
                       ? '🚫 [ব্লক টিচার - অন্য ক্লাসে নিষিদ্ধ]'
+                      : isBlockedHere
+                      ? '⛔ [বন্ধ পিরিয়ড]'
                       : isCombinedRoomShare
                       ? `🕌 [Combined ${combinedHinduRoom} · ${slotMatches.length}/${maxRelConcurrent}]`
                       : isClashing
@@ -642,6 +672,15 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <div className="text-xs text-rose-800 dark:text-rose-300">
                   <strong>প্রাতিষ্ঠানিক নীতি লঙ্ঘন:</strong> {selectedTeacherObj?.name} একজন প্লে/নার্সারি ব্লক টিচার। তাঁকে অন্য কোনো শ্রেণিতে ক্লাস দেওয়া যাবে না। অনুগ্রহ করে অন্য শিক্ষক নির্বাচন করুন।
+                </div>
+              </div>
+            )}
+
+            {teacherBlockedAtSlot && !blockTeacherViolation && (
+              <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-800 dark:text-amber-300">
+                  <strong>বন্ধ/অবসর পিরিয়ড সতর্কতা:</strong> {selectedTeacherObj?.name}-এর জন্য {day} (Period {periodIndex}) বন্ধ নির্ধারিত রয়েছে। এখানে যুক্ত করলে অডিটে কনফ্লিক্ট হিসেবে চিহ্নিত হবে।
                 </div>
               </div>
             )}
@@ -702,10 +741,13 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                           resolveSubjectRoom(selectedPartnerSubject.id)
                         );
                         const isBusy = partnerSlotMatches.length > 0 && !compatibleHinduPartner;
+                        const isPartnerBlocked = isTeacherBlockedAtSlot(t, day, periodIndex);
                         return (
                           <option key={t.id} value={t.id}>
                             {t.name} ({t.initials}){' '}
-                            {partnerSlotMatches.length > 0 && compatibleHinduPartner
+                            {isPartnerBlocked
+                              ? '⛔ [বন্ধ পিরিয়ড]'
+                              : partnerSlotMatches.length > 0 && compatibleHinduPartner
                               ? `🕌 [Combined ${combinedHinduRoom} · ${partnerSlotMatches.length}/${maxRelConcurrent}]`
                               : isBusy
                               ? '⚠️ [BUSY]'

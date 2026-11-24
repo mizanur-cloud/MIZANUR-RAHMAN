@@ -5,6 +5,7 @@ import {
   getCombinedHinduRoom,
   getCombinedHinduTeacherId,
   getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
   getExpectedSectionTeacherId,
   getMaxReligionConcurrentSections,
   isAgricultureSubject,
@@ -16,6 +17,7 @@ import {
   isPlayOrNursery,
   isReligionSubject,
   isSubjectSelectedForSection,
+  isTeacherBlockedAtSlot,
   isTeacherBlockTeacher,
 } from './parallelSubjects';
 
@@ -525,6 +527,31 @@ export function detectAllConflicts(
     }
   });
 
+  // 2H. Subject Fixed Period Restriction Check (KG - Class 10):
+  //     If a subject is restricted to specific allowed periods, flag any entry outside those periods.
+  entries.forEach(entry => {
+    const cls = classMap.get(entry.classId);
+    if (!cls || isPlayOrNursery(cls)) return;
+    const allowedPeriods = getEffectiveSubjectFixedPeriods(cls, entry.sectionId, entry.subjectId, subjects);
+    if (allowedPeriods && allowedPeriods.length > 0 && !allowedPeriods.includes(entry.periodIndex)) {
+      const subName = subjects?.find(s => s.id === entry.subjectId)?.name || entry.subjectId;
+      const sectionLabel = getSectionName(entry.classId, entry.sectionId);
+      const allowedLabel = allowedPeriods.map(p => `P${p}`).join(', ');
+      conflicts.push({
+        id: `conf-fixed-period-${entry.id}`,
+        type: 'subject_fixed_period',
+        severity: 'error',
+        day: entry.day,
+        periodIndex: entry.periodIndex,
+        title: `Subject Period Restriction: ${subName} (${sectionLabel})`,
+        description: `${sectionLabel}-এ "${subName}" বিষয়টি শুধুমাত্র নির্ধারিত পিরিয়ডে (${allowedLabel}) রাখার নিয়ম রয়েছে, কিন্তু ${entry.day} (Period ${entry.periodIndex})-এ নির্ধারিত হয়েছে।`,
+        entryIds: [entry.id],
+        classId: entry.classId,
+        sectionId: entry.sectionId,
+      });
+    }
+  });
+
   // 3. Check Block Teacher Isolation (Play/Nursery block teachers cannot teach KG-10)
   entries.forEach(entry => {
     const teacher = teacherMap.get(entry.teacherId);
@@ -607,27 +634,28 @@ export function detectAllConflicts(
     });
   });
 
-  // 5. Check for Teacher Availability
-  teachers.forEach(teacher => {
-    if (!teacher.unavailableSlots || teacher.unavailableSlots.length === 0) return;
-    teacher.unavailableSlots.forEach(slot => {
-      const matched = entries.filter(
-        e => e.teacherId === teacher.id && e.day === slot.day && e.periodIndex === slot.periodIndex
-      );
-      if (matched.length > 0) {
-        conflicts.push({
-          id: `conf-unavail-${teacher.id}-${slot.day}-${slot.periodIndex}`,
-          type: 'teacher_unavailable',
-          severity: 'error',
-          day: slot.day,
-          periodIndex: slot.periodIndex,
-          title: `Teacher Unavailable: ${teacher.name}`,
-          description: `${teacher.name} is marked unavailable on ${slot.day}, Period ${slot.periodIndex}, but is assigned to ${getSectionName(matched[0].classId, matched[0].sectionId)}.`,
-          entryIds: matched.map(e => e.id),
-          teacherId: teacher.id,
-        });
-      }
-    });
+  // 5. Check for Teacher Availability (Period-wide unavailablePeriods AND specific Day+Period unavailableSlots)
+  teacherSlotMap.forEach(matched => {
+    const first = matched[0];
+    const teacher = teacherMap.get(first.teacherId);
+    if (!teacher) return;
+    if (isTeacherBlockedAtSlot(teacher, first.day, first.periodIndex)) {
+      const isPeriodWide = Boolean(teacher.unavailablePeriods?.includes(first.periodIndex));
+      const classNames = matched.map(e => getSectionName(e.classId, e.sectionId)).join(', ');
+      conflicts.push({
+        id: `conf-unavail-${teacher.id}-${first.day}-${first.periodIndex}`,
+        type: 'teacher_unavailable',
+        severity: 'error',
+        day: first.day,
+        periodIndex: first.periodIndex,
+        title: `Teacher Blocked Period: ${teacher.name}`,
+        description: isPeriodWide
+          ? `${teacher.name}-এর জন্য Period ${first.periodIndex} সম্পূর্ণ বন্ধ (সব দিন) নির্ধারিত রয়েছে, অথচ ${first.day} তারিখে ${classNames}-এ ক্লাস দেওয়া হয়েছে।`
+          : `${teacher.name}-এর জন্য ${first.day}, Period ${first.periodIndex} বন্ধ (অনুপলব্ধ) নির্ধারিত রয়েছে, অথচ ${classNames}-এ ক্লাস দেওয়া হয়েছে।`,
+        entryIds: matched.map(e => e.id),
+        teacherId: teacher.id,
+      });
+    }
   });
 
   // 6. Check Teacher Daily & Weekly Maximum Period Limits (deduplicated for combined Room 307 sessions)

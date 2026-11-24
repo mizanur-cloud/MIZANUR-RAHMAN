@@ -18,8 +18,8 @@ import {
   Printer,
   ChevronRight,
   Info,
-  Sparkles,
 } from 'lucide-react';
+import { SchoolCrestLogo } from './SchoolCrestLogo';
 import {
   exportAllTeachersDocx,
   exportClassDocx,
@@ -235,26 +235,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   // Handle PDF download based on active category
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     setIsExporting(true);
     try {
       if (activeCategory === 'complete_school') {
-        exportCompleteSchoolPdf(fullAppState);
-        triggerNotify('Complete School Routine PDF (.pdf) downloaded successfully!');
+        await exportCompleteSchoolPdf(fullAppState);
+        triggerNotify('Complete School Routine Grid PDF (.pdf) downloaded successfully!');
       } else if (activeCategory === 'class') {
-        exportClassPdf(selectedClassId, fullAppState);
-        triggerNotify(`${selectedClass?.name} Routine PDF (.pdf) downloaded!`);
+        await exportClassPdf(selectedClassId, fullAppState);
+        triggerNotify(`${selectedClass?.name} Grid Routine PDF (.pdf) downloaded!`);
       } else if (activeCategory === 'section') {
-        exportSectionPdf(selectedClassId, selectedSectionId, fullAppState);
+        await exportSectionPdf(selectedClassId, selectedSectionId, fullAppState);
         triggerNotify(
-          `${selectedClass?.name} - ${selectedSection?.name} Routine PDF (.pdf) downloaded!`
+          `${selectedClass?.name} - ${selectedSection?.name} Grid Routine PDF (.pdf) downloaded!`
         );
       } else if (activeCategory === 'teacher') {
-        exportTeacherPdf(selectedTeacherId, fullAppState);
-        triggerNotify(`${selectedTeacher?.name} Routine PDF (.pdf) downloaded!`);
+        await exportTeacherPdf(selectedTeacherId, fullAppState);
+        triggerNotify(`${selectedTeacher?.name} Grid Routine PDF (.pdf) downloaded!`);
       } else if (activeCategory === 'all_teachers') {
-        exportAllTeachersPdf(fullAppState);
-        triggerNotify('All Teachers combined PDF (.pdf) downloaded successfully!');
+        await exportAllTeachersPdf(fullAppState);
+        triggerNotify('All Teachers combined Grid PDF (.pdf) downloaded successfully!');
       }
     } catch (err) {
       console.error(err);
@@ -285,12 +285,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <Download className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-xs">
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  Routine Export & Print Center (ডাউনলোড ও প্রিন্ট প্রিভিউ)
+                  Routine Export & Print Center (গ্রিড ভিউ ডাউনলোড ও প্রিন্ট)
                 </h2>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-medium">
-                  Live Preview Enabled
+                <span className="text-slate-400">·</span>
+                <span className="text-[11px] text-emerald-800 dark:text-emerald-400 font-semibold">
+                  Landscape Grid View
                 </span>
               </div>
               <p className="text-xs text-slate-500">
@@ -681,6 +682,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div>
                 {/* School Letterhead */}
                 <div className="text-center pb-4 mb-4 border-b-2 border-slate-800">
+                  <SchoolCrestLogo bare className="w-14 h-14 mx-auto mb-1.5" />
                   <div className="text-lg sm:text-xl font-extrabold tracking-tight uppercase text-slate-900">
                     {fullAppState.settings.schoolName}
                   </div>
@@ -721,11 +723,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                               {day}
                             </td>
                             {activeTeachingPeriods.map(period => {
-                              const entry = previewData.entries.find(
+                              const slotEntries = previewData.entries.filter(
                                 e => e.day === day && e.periodIndex === period.periodIndex
                               );
 
-                              if (!entry) {
+                              if (slotEntries.length === 0) {
                                 return (
                                   <td
                                     key={period.periodIndex}
@@ -736,43 +738,45 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                                 );
                               }
 
-                              const subject = subjectMap.get(entry.subjectId);
-                              const teacher = entry.teacherId ? teacherMap.get(entry.teacherId) : null;
-                              const cls = classMap.get(entry.classId);
-                              const sec = cls?.sections.find(s => s.id === entry.sectionId);
-
                               return (
                                 <td
                                   key={period.periodIndex}
-                                  className="py-2 px-1.5 border-r border-slate-200 bg-white"
+                                  className="py-2 px-1.5 border-r border-slate-200 bg-white align-middle"
                                 >
-                                  {/* Subject badge */}
-                                  <div className="flex items-center justify-center gap-1">
-                                    <span
-                                      className="w-2 h-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: subject?.color || '#3B82F6' }}
-                                    />
-                                    <span className="font-bold text-slate-900 leading-tight">
-                                      {subject?.name || 'Subject'}
-                                    </span>
+                                  <div className="space-y-1.5">
+                                    {slotEntries.map((entry, idx) => {
+                                      const subject = subjectMap.get(entry.subjectId);
+                                      const teacher = entry.teacherId ? teacherMap.get(entry.teacherId) : null;
+                                      const cls = classMap.get(entry.classId);
+                                      const sec = cls?.sections.find(s => s.id === entry.sectionId);
+                                      const roomText = entry.room || sec?.roomNumber;
+
+                                      return (
+                                        <div
+                                          key={entry.id || idx}
+                                          className={idx > 0 ? 'pt-1.5 border-t border-slate-200 border-dashed' : ''}
+                                        >
+                                          <div className="font-bold text-slate-900 leading-tight">
+                                            {subject?.name || 'Subject'}
+                                          </div>
+                                          {previewData.mode === 'class' ? (
+                                            <div className="text-[10px] text-slate-600 mt-0.5 font-medium truncate">
+                                              {teacher?.name || 'Assigned'}
+                                            </div>
+                                          ) : (
+                                            <div className="text-[10px] text-emerald-800 font-semibold mt-0.5 truncate">
+                                              {cls?.name || 'Class'} {sec?.name ? `(${sec.name})` : ''}
+                                            </div>
+                                          )}
+                                          {roomText && (
+                                            <div className="text-[9px] text-slate-400 font-mono">
+                                              {roomText}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-
-                                  {/* In class mode show teacher, in teacher mode show class & section */}
-                                  {previewData.mode === 'class' ? (
-                                    <div className="text-[10px] text-slate-600 mt-0.5 font-medium truncate">
-                                      {teacher?.name || 'Assigned'}
-                                    </div>
-                                  ) : (
-                                    <div className="text-[10px] text-blue-800 font-semibold mt-0.5 truncate">
-                                      {cls?.name || 'Class'} {sec?.name ? `(${sec.name})` : ''}
-                                    </div>
-                                  )}
-
-                                  {sec?.roomNumber && (
-                                    <div className="text-[9px] text-slate-400 font-mono">
-                                      Rm: {sec.roomNumber}
-                                    </div>
-                                  )}
                                 </td>
                               );
                             })}

@@ -1,20 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="128" fill="#1D4ED8"/>
-  <rect x="96" y="112" width="320" height="304" rx="28" fill="#FFFFFF"/>
-  <path d="M96 112H416V184H96V112Z" fill="#EF4444"/>
-  <circle cx="160" cy="148" r="14" fill="#FFFFFF"/>
-  <circle cx="256" cy="148" r="14" fill="#FFFFFF"/>
-  <circle cx="352" cy="148" r="14" fill="#FFFFFF"/>
-  <!-- Calendar Grid Slots -->
-  <rect x="132" y="220" width="56" height="40" rx="8" fill="#2563EB"/>
-  <rect x="204" y="220" width="104" height="40" rx="8" fill="#3B82F6"/>
-  <rect x="324" y="220" width="56" height="40" rx="8" fill="#60A5FA"/>
-
-  <rect x="132" y="280" width="80" height="40" rx="8" fill="#3B82F6"/>
-  <rect x="228" y="280" width="72" height="40" rx="8" fill="#2563EB"/>
-  <rect x="316" y="280" width="64" height="40" rx="8" fill="#3B82F6"/>
-
-  <rect x="132" y="340" width="64" height="40" rx="8" fill="#60A5FA"/>
-  <rect x="212" y="340" width="88" height="40" rx="8" fill="#2563EB"/>
-  <rect x="316" y="340" width="64" height="40" rx="8" fill="#10B981"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <!-- Outer Institutional Crest Shield -->
+  <path
+    d="M16 14C16 10.6863 18.6863 8 22 8H106C109.314 8 112 10.6863 112 14V64C112 91.5 89.5 111.5 64 120C38.5 111.5 16 91.5 16 64V14Z"
+    fill="#145343"
+  />
+  <!-- Inner Brass Hairline Crest Border -->
+  <path
+    d="M23 16.5C23 15.6716 23.6716 15 24.5 15H103.5C104.328 15 105 15.6716 105 16.5V63.5C105 87.2 85.4 104.6 64 112.2C42.6 104.6 23 87.2 23 63.5V16.5Z"
+    stroke="#D4A34A"
+    stroke-width="2.5"
+  />
+  <!-- Header Monogram Band -->
+  <path d="M24 34H104" stroke="#D4A34A" stroke-width="1.5" stroke-opacity="0.7" />
+  <text
+    x="64"
+    y="28.5"
+    text-anchor="middle"
+    fill="#F8E7BE"
+    font-family="Georgia, serif"
+    font-size="11"
+    font-weight="700"
+    letter-spacing="2.2"
+  >IDSC</text>
+  <!-- Architectural Column / Torch of Learning -->
+  <path d="M64 41L68.5 50.5L64 53.5L59.5 50.5L64 41Z" fill="#D4A34A" />
+  <rect x="61.5" y="55" width="5" height="26" rx="1" fill="#F7F5F0" />
+  <!-- Open Heritage Textbook -->
+  <path
+    d="M35 63C44 63 54 66 64 72C74 66 84 63 93 63V87C83 87 73 89.5 64 95C55 89.5 45 87 35 87V63Z"
+    fill="#F7F5F0"
+    fill-opacity="0.95"
+  />
+  <path d="M64 72V95" stroke="#145343" stroke-width="2.2" />
+  <path d="M41 71C47 71.5 53 73.5 58 76.5" stroke="#145343" stroke-width="1.8" stroke-linecap="round" />
+  <path d="M41 78C47 78.5 53 80.5 58 83.5" stroke="#145343" stroke-width="1.8" stroke-linecap="round" />
+  <path d="M87 71C81 71.5 75 73.5 70 76.5" stroke="#145343" stroke-width="1.8" stroke-linecap="round" />
+  <path d="M87 78C81 78.5 75 80.5 70 83.5" stroke="#145343" stroke-width="1.8" stroke-linecap="round" />
+  <!-- Foundation Scroll Base -->
+  <path d="M44 100.5H84" stroke="#D4A34A" stroke-width="2" stroke-linecap="round" />
 </svg>

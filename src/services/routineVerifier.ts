@@ -13,6 +13,7 @@ import {
   getCombinedHinduRoom,
   getCombinedHinduTeacherId,
   getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
   getExpectedSectionTeacherId,
   getMaxReligionConcurrentSections,
   isAgricultureSubject,
@@ -209,6 +210,7 @@ export function verifyRoutine(
   const wrongTeacherConflicts = scopedConflicts.filter(c => c.type === 'wrong_teacher_assignment');
   const religionRuleConflicts = scopedConflicts.filter(c => c.type === 'religion_rule_violation');
   const unselectedConflicts = scopedConflicts.filter(c => c.type === 'unselected_subject');
+  const subjectFixedPeriodConflicts = scopedConflicts.filter(c => c.type === 'subject_fixed_period');
   const unavailableConflicts = scopedConflicts.filter(c => c.type === 'teacher_unavailable');
   const limitConflicts = scopedConflicts.filter(c => c.type === 'teacher_limit_exceeded');
 
@@ -329,12 +331,17 @@ export function verifyRoutine(
         const sub = subjectMap.get(req.subjectId);
         const expectedTeacherId = getExpectedSectionTeacherId(cls, secId, req.subjectId, teachers);
         const dedicatedTeacher = expectedTeacherId ? teacherMap.get(expectedTeacherId) : undefined;
+        const fixedPeriods = getEffectiveSubjectFixedPeriods(cls, secId, req.subjectId, subjects);
+        const fixedNote =
+          fixedPeriods && fixedPeriods.length > 0
+            ? ` (নির্ধারিত পিরিয়ড: ${fixedPeriods.map(p => `P${p}`).join(', ')})`
+            : '';
         const reason =
           secEntries.length === 0
             ? 'সেকশনটির রুটিন এখনো অটো-ফিল করা হয়নি'
             : dedicatedTeacher
-            ? `${dedicatedTeacher.name}-এর সাথে নির্ধারিত সময়ে স্লট/দৈনিক সীমা সমন্বয় হয়নি`
-            : 'যোগ্য শিক্ষক বা উন্মুক্ত পিরিয়ড স্লট পাওয়া যায়নি';
+            ? `${dedicatedTeacher.name}-এর সাথে নির্ধারিত সময়ে স্লট/বন্ধ পিরিয়ড/দৈনিক সীমা সমন্বয় হয়নি${fixedNote}`
+            : `যোগ্য শিক্ষক বা উন্মুক্ত পিরিয়ড স্লট পাওয়া যায়নি${fixedNote}`;
 
         unassignedDetails.push({
           classId: cls.id,
@@ -520,7 +527,8 @@ export function verifyRoutine(
     overQuotaEntriesCount === 0 &&
     exceededCapacitySectionsCount === 0 &&
     sameDayRepeatCount === 0 &&
-    unselectedSubjectEntriesCount === 0;
+    unselectedSubjectEntriesCount === 0 &&
+    subjectFixedPeriodConflicts.length === 0;
 
   const quotaFailReasons: string[] = [];
   if (unassignedClasses > 0) quotaFailReasons.push(`${unassignedClasses}টি পিরিয়ড এখনো বাকি`);
@@ -528,6 +536,7 @@ export function verifyRoutine(
   if (exceededCapacitySectionsCount > 0) quotaFailReasons.push(capacityErrors[0]);
   if (sameDayRepeatCount > 0) quotaFailReasons.push(`${sameDayRepeatCount}টি একই দিনে পুনরাবৃত্তি`);
   if (unselectedSubjectEntriesCount > 0) quotaFailReasons.push(`${unselectedSubjectEntriesCount}টি অনির্বাচিত বিষয়`);
+  if (subjectFixedPeriodConflicts.length > 0) quotaFailReasons.push(`${subjectFixedPeriodConflicts.length}টি নির্ধারিত পিরিয়ড লঙ্ঘন`);
 
   const workloadOk =
     overloadedTeachers.length === 0 &&
@@ -720,6 +729,7 @@ export function verifyRoutine(
     religionRuleConflicts.length +
     unavailableConflicts.length +
     unselectedSubjectEntriesCount +
+    subjectFixedPeriodConflicts.length +
     exceededCapacitySectionsCount +
     overQuotaEntriesCount +
     limitConflicts.filter(c => c.severity === 'error').length +
@@ -738,6 +748,7 @@ export function verifyRoutine(
     const reasons: string[] = [];
     if (unassignedClasses > 0) reasons.push(`${unassignedClasses} Unassigned Periods`);
     if (wrongTeacherConflicts.length > 0) reasons.push(`${wrongTeacherConflicts.length} Wrong Section Teachers`);
+    if (subjectFixedPeriodConflicts.length > 0) reasons.push(`${subjectFixedPeriodConflicts.length} Fixed Period Violations`);
     if (roomConflicts.length > 0) reasons.push(`${roomConflicts.length} Room Conflicts`);
     if (availConflictCount > 0) reasons.push(`${availConflictCount} Teacher Conflicts`);
     if (classDoubleBookings.length > 0) reasons.push(`${classDoubleBookings.length} Section Overlaps`);

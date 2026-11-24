@@ -16,7 +16,6 @@ import {
   Image as ImageIcon,
   FileCheck,
   X,
-  Sparkles,
   AlertCircle,
   CheckCircle2,
   Download,

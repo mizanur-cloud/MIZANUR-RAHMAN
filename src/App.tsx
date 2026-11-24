@@ -40,6 +40,7 @@ import {
   AGRICULTURE_ROOM,
   areParallelSubjects,
   getCombinedHinduRoom,
+  getEffectiveSubjectFixedPeriods,
   getMaxReligionConcurrentSections,
   isAgricultureSubject,
   isHinduReligionRoom,
@@ -47,6 +48,7 @@ import {
   isPlayOrNursery,
   isReligionSubject,
   isSubjectSelectedForSection,
+  isTeacherBlockedAtSlot,
 } from './services/parallelSubjects';
 import { isSlotDismissed } from './services/scheduleTiers';
 
@@ -71,11 +73,14 @@ import { HelpAndInstallModal } from './components/HelpAndInstallModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { LoginModal } from './components/LoginModal';
 import { ControlPanelView } from './components/ControlPanelView';
+import { LiveDashboardView } from './components/LiveDashboardView';
+import { SchoolCrestLogo } from './components/SchoolCrestLogo';
+import { MobileNavigationDock } from './components/MobileNavigationDock';
+import { useViewMode } from './context/ViewModeContext';
 
 import {
   AlertTriangle,
   ArrowRight,
-  School,
   Undo2,
   CheckCircle2,
   X,
@@ -125,7 +130,9 @@ export default function App() {
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [secretRouteRequested, setSecretRouteRequested] = useState<boolean>(() => isSecretControlRoute());
+  const { isMobileView, isDesktopView } = useViewMode();
 
   // Dual-Theme Light / Dark mode state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -650,12 +657,28 @@ export default function App() {
           }
         }
 
+        const allowedFixedPeriods = getEffectiveSubjectFixedPeriods(
+          cls,
+          sectionId,
+          entry.subjectId,
+          data.subjects
+        );
+        if (allowedFixedPeriods && allowedFixedPeriods.length > 0 && !allowedFixedPeriods.includes(targetPeriod)) {
+          const subName = subjectMap.get(entry.subjectId)?.name || 'এই বিষয়';
+          return `"${subName}" বিষয়টি শুধুমাত্র নির্ধারিত পিরিয়ডে (${allowedFixedPeriods.map(p => `P${p}`).join(', ')}) রাখা যাবে — P${targetPeriod}-এ বদল করা সম্ভব নয়।`;
+        }
+
         const isHinduCombined =
           isHinduReligionSubject(entry.subjectId, data.subjects) &&
           isHinduReligionRoom(entry.room || getCombinedHinduRoom(data.settings), data.settings);
         const maxRelConcurrent = getMaxReligionConcurrentSections(data.settings);
 
         if (entry.teacherId) {
+          const teacherObj = teacherMap.get(entry.teacherId);
+          if (teacherObj && isTeacherBlockedAtSlot(teacherObj, targetDay, targetPeriod)) {
+            return `${teacherObj.name}-এর জন্য ${targetDay} (P${targetPeriod}) বন্ধ/অবসর পিরিয়ড হিসেবে নির্ধারিত রয়েছে।`;
+          }
+
           const teacherCollisions = data.entries.filter(
             other =>
               !(other.classId === classId && other.sectionId === sectionId) &&
@@ -875,12 +898,12 @@ export default function App() {
     }, 'সেকশন-ভিত্তিক বিষয় নির্বাচন সংরক্ষিত হয়েছে।', 'class_update', `সেকশন বিষয় নির্বাচন আপডেট (${classId})`);
   };
 
-  // Strictly isolated section-level quota & teacher config updater (NEVER copies to sibling sections)
+  // Strictly isolated section-level quota, teacher & fixed-period config updater (NEVER copies to sibling sections)
   const handleUpdateSectionSubjectConfig = (
     classId: string,
     sectionId: string,
     subjectId: string,
-    patch: { periodsPerWeek?: number; assignedTeacherId?: string }
+    patch: { periodsPerWeek?: number; assignedTeacherId?: string; fixedPeriodIndices?: number[] }
   ) => {
     commitData(prev => {
       const updatedClasses = prev.classes.map(cls => {
@@ -900,6 +923,10 @@ export default function App() {
               patch.assignedTeacherId !== undefined
                 ? patch.assignedTeacherId
                 : curCfg.assignedTeacherId;
+            const hasFixedPatch = 'fixedPeriodIndices' in patch;
+            const nextFixedPeriods = hasFixedPatch
+              ? patch.fixedPeriodIndices
+              : curCfg.fixedPeriodIndices;
             return {
               ...sec,
               subjectConfigs: {
@@ -907,6 +934,7 @@ export default function App() {
                 [subjectId]: {
                   periodsPerWeek: nextPeriods,
                   assignedTeacherId: nextTeacherId,
+                  ...(nextFixedPeriods !== undefined ? { fixedPeriodIndices: nextFixedPeriods } : {}),
                 },
               },
             };
@@ -920,7 +948,7 @@ export default function App() {
         classes: updatedClasses,
         teachers: syncedTeachers,
       };
-    }, 'সেকশন-ভিত্তিক বিষয় ও শিক্ষক কনফিগারেশন সংরক্ষিত হয়েছে।', 'class_update', `সেকশন বিষয় কোটা/শিক্ষক নির্ধারণ (${classId})`);
+    }, 'সেকশন-ভিত্তিক বিষয়, শিক্ষক ও পিরিয়ড কনফিগারেশন সংরক্ষিত হয়েছে।', 'class_update', `সেকশন বিষয় কোটা/শিক্ষক/পিরিয়ড নির্ধারণ (${classId})`);
   };
 
   const handleDeleteGlobalSubject = (subjectId: string) => {
@@ -1185,19 +1213,34 @@ export default function App() {
 
   const routeAccessDenied = authReady && secretRouteRequested && !isSuperAdmin;
 
+  const handleSelectTab = (tab: WorkspaceTab) => {
+    if (tab === 'control-panel' && !isSuperAdmin) return;
+    if ((tab === 'proxy' || tab === 'conflicts') && !canEdit) return;
+    if (secretRouteRequested && tab !== 'control-panel') {
+      handleReturnFromBlockedRoute();
+    }
+    setActiveTab(tab);
+  };
+
   return (
-    <div className="min-h-screen bg-[#f6f8fb] dark:bg-[#090e1a] text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors">
+    <div
+      className={
+        isMobileView
+          ? 'min-h-screen bg-[#f7f5f0] md:bg-stone-200/75 dark:bg-[#0d1115] md:dark:bg-[#070a0d] md:py-4 md:px-4 font-sans transition-colors'
+          : 'min-h-screen bg-[#f7f5f0] dark:bg-[#0d1115] text-stone-800 dark:text-stone-100 flex flex-col font-sans transition-colors'
+      }
+    >
+      <div
+        className={
+          isMobileView
+            ? 'w-full md:max-w-[430px] md:mx-auto bg-[#f7f5f0] dark:bg-[#0d1115] text-stone-800 dark:text-stone-100 min-h-screen md:min-h-[calc(100vh-2rem)] flex flex-col md:rounded-[2rem] md:border md:border-stone-200 md:dark:border-slate-800 md:shadow-2xl md:overflow-x-clip'
+            : 'flex-1 flex flex-col'
+        }
+      >
       {/* Top 3-Zone Navigation Header */}
       <Navbar
         activeTab={activeTab}
-        setActiveTab={tab => {
-          if (tab === 'control-panel' && !isSuperAdmin) return;
-          if ((tab === 'proxy' || tab === 'conflicts') && !canEdit) return;
-          if (secretRouteRequested && tab !== 'control-panel') {
-            handleReturnFromBlockedRoute();
-          }
-          setActiveTab(tab);
-        }}
+        setActiveTab={handleSelectTab}
         errorCount={errorCount}
         warningCount={warningCount}
         schoolName={data.settings.schoolName}
@@ -1296,25 +1339,34 @@ export default function App() {
         </div>
       )}
 
-      {/* Main 2-Column Workspace */}
-      <div className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
-        <WorkspaceSidebar
-          totalClasses={data.classes.length}
-          totalTeachers={data.teachers.length}
-          totalEntries={data.entries.length}
-          errorCount={errorCount}
-          warningCount={warningCount}
-          canEdit={canEdit}
-          isSuperAdmin={isSuperAdmin}
-          onOpenClassMgmt={() => canEdit && setIsClassMgmtOpen(true)}
-          onOpenTeacherMgmt={() => canEdit && setIsTeacherMgmtOpen(true)}
-          onOpenSubjectMgmt={() => canEdit && setIsSubjectMgmtOpen(true)}
-          onOpenSettings={() => canEdit && setIsSettingsOpen(true)}
-          onOpenSmartImport={() => canEdit && setIsSmartImportOpen(true)}
-          onOpenHelpAndInstall={() => setIsHelpAndInstallOpen(true)}
-          onOpenCompliance={() => canEdit && setActiveTab('conflicts')}
-          onOpenControlPanel={() => isSuperAdmin && setActiveTab('control-panel')}
-        />
+      {/* Main 2-Column Workspace (Desktop) or Single-Column App Shell (Mobile) */}
+      <div
+        className={
+          isMobileView
+            ? 'flex-1 w-full px-3 py-4 pb-20 flex flex-col gap-4'
+            : 'flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6'
+        }
+      >
+        {isDesktopView && (
+          <WorkspaceSidebar
+            totalClasses={data.classes.length}
+            totalTeachers={data.teachers.length}
+            totalEntries={data.entries.length}
+            errorCount={errorCount}
+            warningCount={warningCount}
+            canEdit={canEdit}
+            isSuperAdmin={isSuperAdmin}
+            onOpenLiveDashboard={() => setActiveTab('live')}
+            onOpenClassMgmt={() => canEdit && setIsClassMgmtOpen(true)}
+            onOpenTeacherMgmt={() => canEdit && setIsTeacherMgmtOpen(true)}
+            onOpenSubjectMgmt={() => canEdit && setIsSubjectMgmtOpen(true)}
+            onOpenSettings={() => canEdit && setIsSettingsOpen(true)}
+            onOpenSmartImport={() => canEdit && setIsSmartImportOpen(true)}
+            onOpenHelpAndInstall={() => setIsHelpAndInstallOpen(true)}
+            onOpenCompliance={() => canEdit && setActiveTab('conflicts')}
+            onOpenControlPanel={() => isSuperAdmin && setActiveTab('control-panel')}
+          />
+        )}
 
         <main className="flex-1 min-w-0">
           {routeAccessDenied ? (
@@ -1352,6 +1404,27 @@ export default function App() {
             </div>
           ) : (
             <>
+              {activeTab === 'live' && (
+                <LiveDashboardView
+                  classes={data.classes}
+                  teachers={data.teachers}
+                  subjects={data.subjects}
+                  workingDays={data.settings.workingDays}
+                  periodTimings={data.settings.periodTimings}
+                  entries={data.entries}
+                  settings={data.settings}
+                  onSelectClassSection={(cId, sId) => {
+                    setSelectedClassId(cId);
+                    setSelectedSectionId(sId);
+                    setActiveTab('classes');
+                  }}
+                  onSelectTeacher={tId => {
+                    setSelectedTeacherId(tId);
+                    setActiveTab('teachers');
+                  }}
+                />
+              )}
+
               {activeTab === 'classes' && (
                 <ClassRoutineView
                   classes={data.classes}
@@ -1468,11 +1541,19 @@ export default function App() {
       </div>
 
       {/* Footer */}
-      <footer className="no-print border-t border-slate-200 dark:border-slate-800 py-5 mt-auto bg-white/70 dark:bg-slate-900/60">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-2 flex-wrap">
-            <School className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
+      <footer
+        className={`no-print border-t border-stone-200 dark:border-slate-800 py-5 mt-auto bg-white/80 dark:bg-[#141a20]/80 ${
+          isMobileView ? 'pb-24 px-3' : ''
+        }`}
+      >
+        <div
+          className={`${
+            isMobileView ? 'px-1' : 'max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8'
+          } flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-500 dark:text-slate-400`}
+        >
+          <div className="flex items-center gap-2.5 flex-wrap justify-center sm:justify-start">
+            <SchoolCrestLogo className="w-5 h-5 shrink-0" />
+            <span className="font-semibold text-stone-700 dark:text-slate-300">
               {data.settings.schoolName}
             </span>
             <span>·</span>
@@ -1481,14 +1562,52 @@ export default function App() {
             <span>Principal: {data.settings.principalName}</span>
           </div>
           <div>
-            Smart School Routine Management System · Centralized Timetable Engine
+            একাডেমিক টাইমটেবিল ও ক্যাম্পাস রুটিন ম্যানেজমেন্ট
           </div>
         </div>
       </footer>
 
+      {isMobileView && (
+        <MobileNavigationDock
+          activeTab={activeTab}
+          setActiveTab={handleSelectTab}
+          isOpenMenu={isMobileMenuOpen}
+          setIsOpenMenu={setIsMobileMenuOpen}
+          canEdit={canEdit}
+          isSuperAdmin={isSuperAdmin}
+          isAuthenticated={Boolean(firebaseUser)}
+          userEmail={email}
+          role={role}
+          adminStatus={adminStatus}
+          errorCount={errorCount}
+          warningCount={warningCount}
+          totalClasses={data.classes.length}
+          totalTeachers={data.teachers.length}
+          totalEntries={data.entries.length}
+          onOpenClassMgmt={() => canEdit && setIsClassMgmtOpen(true)}
+          onOpenTeacherMgmt={() => canEdit && setIsTeacherMgmtOpen(true)}
+          onOpenSubjectMgmt={() => canEdit && setIsSubjectMgmtOpen(true)}
+          onOpenSettings={() => canEdit && setIsSettingsOpen(true)}
+          onOpenSmartImport={() => canEdit && setIsSmartImportOpen(true)}
+          onOpenAutoGenerate={() => canEdit && setIsAutoGenerateOpen(true)}
+          onOpenExport={() => setIsExportOpen(true)}
+          onOpenHelpAndInstall={() => setIsHelpAndInstallOpen(true)}
+          onOpenLogin={() => setIsLoginOpen(true)}
+          onLogout={() => {
+            void logout().then(() => {
+              showNotice('সফলভাবে লগআউট হয়েছে।');
+            });
+          }}
+        />
+      )}
+
       {/* Non-blocking Action Toast with Quick Undo */}
       {actionNotice && (
-        <div className="no-print fixed bottom-5 right-5 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl border border-slate-700 shadow-lg flex items-center gap-3 text-xs">
+        <div
+          className={`no-print fixed right-4 sm:right-5 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl border border-slate-700 shadow-lg flex items-center gap-3 text-xs ${
+            isMobileView ? 'bottom-20 left-4 md:left-auto' : 'bottom-5'
+          }`}
+        >
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span className="font-medium">{actionNotice}</span>
           {past.length > 0 && (
@@ -1566,6 +1685,8 @@ export default function App() {
             classes={data.classes}
             subjects={data.subjects}
             teachers={data.teachers}
+            workingDays={data.settings.workingDays}
+            periodTimings={data.settings.periodTimings}
             onUpdateClasses={handleUpdateClasses}
             onUpdateSectionSubjects={handleUpdateSectionSubjects}
             onUpdateSectionSubjectConfig={handleUpdateSectionSubjectConfig}
@@ -1579,6 +1700,8 @@ export default function App() {
             subjects={data.subjects}
             teachers={data.teachers}
             entries={data.entries}
+            workingDays={data.settings.workingDays}
+            periodTimings={data.settings.periodTimings}
             initialClassId={selectedClassId}
             onUpdateSubjects={updated =>
               commitData(
@@ -1602,6 +1725,8 @@ export default function App() {
             subjects={data.subjects}
             classes={data.classes}
             entries={data.entries}
+            workingDays={data.settings.workingDays}
+            periodTimings={data.settings.periodTimings}
             onUpdateTeachers={handleUpdateTeachers}
             onUpdateClasses={handleUpdateClasses}
             onDeleteTeacher={handleDeleteTeacher}
@@ -1670,6 +1795,7 @@ export default function App() {
       />
 
       <OfflineIndicator />
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
   Grid3X3,
   ShieldCheck,
   AlertTriangle,
-  Sparkles,
+  Wand2,
   Download,
   UserMinus,
   Edit,
@@ -17,10 +17,22 @@ import {
   LogIn,
   LogOut,
   Lock,
+  Radio,
+  Monitor,
+  Smartphone,
 } from 'lucide-react';
 import { AdminStatus, UserRole } from '../types';
+import { SchoolCrestLogo } from './SchoolCrestLogo';
+import { useViewMode } from '../context/ViewModeContext';
 
-export type WorkspaceTab = 'classes' | 'teachers' | 'master' | 'proxy' | 'conflicts' | 'control-panel';
+export type WorkspaceTab =
+  | 'live'
+  | 'classes'
+  | 'teachers'
+  | 'master'
+  | 'proxy'
+  | 'conflicts'
+  | 'control-panel';
 
 interface NavbarProps {
   activeTab: WorkspaceTab;
@@ -73,124 +85,143 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLogin,
   onLogout,
 }) => {
+  const { isMobileView, isDesktopView, setViewMode } = useViewMode();
   const totalIssues = errorCount + warningCount;
 
-  const roleBadge = (() => {
+  const roleStatus = (() => {
     if (role === 'super_admin') {
       return {
         label: 'Super Admin',
-        cls: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800',
+        cls: 'text-[#145343] dark:text-emerald-400',
       };
     }
     if (role === 'admin' && adminStatus === 'active') {
       return {
-        label: 'Admin (Active)',
-        cls: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
+        label: 'Active Admin',
+        cls: 'text-emerald-700 dark:text-emerald-400',
       };
     }
     if (role === 'admin' && adminStatus === 'paused') {
       return {
-        label: 'Admin (Paused)',
-        cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800',
+        label: 'Paused Admin',
+        cls: 'text-amber-700 dark:text-amber-400',
       };
     }
     if (role === 'admin' && adminStatus === 'blocked') {
       return {
         label: 'Blocked',
-        cls: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800',
+        cls: 'text-rose-700 dark:text-rose-400',
       };
     }
     return {
-      label: 'Viewer',
-      cls: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+      label: 'Viewer (Read-Only)',
+      cls: 'text-stone-500 dark:text-slate-400',
     };
   })();
 
   return (
-    <header className="no-print sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
-          {/* Zone 1: Brand Wordmark & Institution Title */}
+    <header className="no-print sticky top-0 z-40 bg-white/95 dark:bg-[#141a20]/95 backdrop-blur-md border-b border-stone-200 dark:border-slate-800 transition-colors">
+      <div className={isMobileView ? 'px-3.5' : 'max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8'}>
+        <div className={`flex items-center justify-between gap-2 ${isMobileView ? 'h-14' : 'h-16 gap-3'}`}>
+          {/* Zone 1: Custom Engraved Crest Emblem & Institution Title */}
           <button
             type="button"
             onClick={() => {
               if (canEdit) onOpenSettings();
             }}
             title={canEdit ? 'Click to edit school name and institutional details' : schoolName}
-            className={`flex items-center gap-3 shrink-0 text-left group min-w-0 ${
+            className={`flex items-center gap-2.5 text-left group min-w-0 flex-1 ${
               canEdit ? 'cursor-pointer' : 'cursor-default'
             }`}
           >
-            <div className="w-9 h-9 rounded-lg bg-blue-700 dark:bg-blue-600 flex items-center justify-center text-white group-hover:bg-blue-800 dark:group-hover:bg-blue-500 transition-colors shrink-0">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
+            <SchoolCrestLogo
+              className={`${isMobileView ? 'w-8 h-8' : 'w-10 h-10'} shrink-0 transition-transform group-hover:scale-[1.03]`}
+            />
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-slate-900 dark:text-white tracking-tight leading-none text-sm sm:text-base group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors truncate max-w-[160px] sm:max-w-[230px]">
+                <span
+                  className={`font-bold text-stone-900 dark:text-white tracking-tight leading-none group-hover:text-[#145343] dark:group-hover:text-emerald-400 transition-colors truncate ${
+                    isMobileView ? 'text-[13px] max-w-[195px]' : 'text-sm sm:text-base max-w-[165px] sm:max-w-[240px]'
+                  }`}
+                >
                   {schoolName}
                 </span>
-                {canEdit && (
-                  <Edit className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                {canEdit && !isMobileView && (
+                  <Edit className="w-3 h-3 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 )}
               </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                Smart Routine · {academicYear}
+              <div className="text-[10px] sm:text-[11px] text-stone-500 dark:text-slate-400 mt-0.5 truncate">
+                {isMobileView ? `সেশন ${academicYear}` : `একাডেমিক রুটিন ও টাইমটেবিল · ${academicYear}`}
               </div>
             </div>
           </button>
 
-          {/* Zone 2: Primary Workspace Tabs (Single-Line Desktop Nav) */}
-          <nav className="hidden md:flex items-center gap-1 text-xs font-medium overflow-x-auto scrollbar-none">
+          {/* Zone 2: Clean Editorial Underline Tabs (Desktop View Only) */}
+          {isDesktopView && (
+          <nav className="hidden md:flex items-center gap-0.5 h-16 text-xs font-medium overflow-x-auto scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setActiveTab('live')}
+              className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+                activeTab === 'live'
+                  ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                  : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 shrink-0" />
+              <span>Live Classes</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('classes')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'classes'
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                  ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                  : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
               }`}
             >
-              <Calendar className="w-4 h-4 shrink-0" />
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
               <span>Class Routines</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('teachers')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'teachers'
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                  ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                  : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
               }`}
             >
-              <Users className="w-4 h-4 shrink-0" />
+              <Users className="w-3.5 h-3.5 shrink-0" />
               <span>Teacher Routines</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('master')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+              className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'master'
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                  ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                  : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
               }`}
             >
-              <Grid3X3 className="w-4 h-4 shrink-0" />
-              <span>Master Timetable</span>
+              <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
+              <span>Master Matrix</span>
             </button>
 
             {canEdit && (
               <button
                 type="button"
                 onClick={() => setActiveTab('proxy')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'proxy'
-                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 font-semibold'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                    ? 'border-rose-600 text-rose-700 dark:border-rose-400 dark:text-rose-300 font-bold'
+                    : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
                 }`}
               >
-                <UserMinus className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <UserMinus className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
                 <span>Proxy (বদলি)</span>
               </button>
             )}
@@ -199,29 +230,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('conflicts')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'conflicts'
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold'
+                    ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
                     : errorCount > 0
-                    ? 'text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                    ? 'border-transparent text-rose-700 dark:text-rose-300'
                     : warningCount > 0
-                    ? 'text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                    ? 'border-transparent text-amber-700 dark:text-amber-300'
+                    : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
                 }`}
               >
                 {totalIssues > 0 ? (
                   <AlertTriangle
-                    className={`w-4 h-4 shrink-0 ${
+                    className={`w-3.5 h-3.5 shrink-0 ${
                       errorCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'
                     }`}
                   />
                 ) : (
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
                 )}
-                <span>Audit & Rules</span>
+                <span>Audit</span>
                 {totalIssues > 0 && (
                   <span
-                    className={`ml-0.5 font-mono text-[11px] font-bold tabular-nums ${
+                    className={`font-mono text-[11px] font-bold tabular-nums ${
                       errorCount > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-amber-700 dark:text-amber-300'
                     }`}
                   >
@@ -235,23 +266,57 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('control-panel')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+                className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'control-panel'
-                    ? 'bg-blue-700 text-white font-semibold shadow-xs'
-                    : 'text-blue-700 dark:text-blue-300 bg-blue-50/70 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                    ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                    : 'border-transparent text-stone-700 dark:text-slate-300 hover:text-[#145343] dark:hover:text-emerald-400'
                 }`}
               >
-                <Shield className="w-4 h-4 shrink-0" />
+                <Shield className="w-3.5 h-3.5 shrink-0" />
                 <span>Control Panel</span>
               </button>
             )}
           </nav>
+          )}
 
-          {/* Zone 3: Safety Controls + RBAC Session + Primary Actions */}
+          {/* Zone 3: Dual View Switcher + Safety Controls + RBAC Session + Primary Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Undo / Redo (Editors only) */}
+            {/* Dual View Switcher: Desktop View vs Mobile View */}
+            <div
+              role="group"
+              aria-label="ডিসপ্লে ভিউ মোড"
+              className="flex items-center border border-stone-200 dark:border-slate-700 rounded-lg bg-[#f7f5f0] dark:bg-slate-800/70 p-0.5 shrink-0"
+            >
+              <button
+                type="button"
+                onClick={() => setViewMode('desktop')}
+                title="ডেক্সটপ ভিউ (Desktop View)"
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 whitespace-nowrap transition-colors ${
+                  isDesktopView
+                    ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                    : 'text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5 shrink-0" />
+                <span className={isMobileView ? 'hidden' : 'hidden xl:inline'}>ডেক্সটপ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('mobile')}
+                title="মোবাইল ভিউ (Mobile View)"
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 whitespace-nowrap transition-colors ${
+                  isMobileView
+                    ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                    : 'text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                <span className={isMobileView ? 'hidden' : 'hidden xl:inline'}>মোবাইল</span>
+              </button>
+            </div>
+
             {canEdit && (
-              <div className="hidden sm:flex items-center border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/70 p-0.5">
+              <div className="hidden sm:flex items-center border border-stone-200 dark:border-slate-700 rounded-lg bg-[#f7f5f0] dark:bg-slate-800/70 p-0.5">
                 <button
                   type="button"
                   onClick={onUndo}
@@ -259,8 +324,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="Undo last change (Ctrl+Z)"
                   className={`p-1.5 rounded-md transition-colors ${
                     canUndo
-                      ? 'text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
-                      : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                      ? 'text-stone-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
+                      : 'text-stone-300 dark:text-slate-600 cursor-not-allowed'
                   }`}
                 >
                   <Undo2 className="w-3.5 h-3.5" />
@@ -272,8 +337,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="Redo change (Ctrl+Y)"
                   className={`p-1.5 rounded-md transition-colors ${
                     canRedo
-                      ? 'text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
-                      : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                      ? 'text-stone-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
+                      : 'text-stone-300 dark:text-slate-600 cursor-not-allowed'
                   }`}
                 >
                   <Redo2 className="w-3.5 h-3.5" />
@@ -281,79 +346,97 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Light / Dark Theme Toggle */}
             <button
               type="button"
               onClick={onToggleTheme}
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              className="p-2 rounded-lg border border-stone-200 dark:border-slate-700 bg-[#f7f5f0] dark:bg-slate-800/70 text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-slate-700 transition-colors"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* Auto-Fill (Editors only) */}
-            {canEdit && (
+            {!isMobileView && canEdit && (
               <button
                 type="button"
                 onClick={onOpenAutoGenerate}
-                className="px-2.5 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-200 bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/70 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                className="px-2.5 py-1.5 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] dark:hover:bg-emerald-900/60 border border-[#bfd5cc] dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
               >
-                <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <Wand2 className="w-3.5 h-3.5" />
                 <span className="hidden lg:inline">Auto-Fill</span>
               </button>
             )}
 
-            {/* Primary Export Action (Allowed for Viewers too for routine download/print) */}
-            <button
-              type="button"
-              onClick={onOpenExport}
-              className="px-2.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export</span>
-            </button>
-
-            {/* Role Status & Auth Action */}
-            <span
-              title={userEmail || 'সাধারণ ভিউয়ার (Read-Only)'}
-              className={`hidden xl:inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg border ${roleBadge.cls}`}
-            >
-              {!canEdit && <Lock className="w-3 h-3" />}
-              <span>{roleBadge.label}</span>
-            </span>
-
-            {isAuthenticated ? (
+            {!isMobileView && (
               <button
                 type="button"
-                onClick={onLogout}
-                title={`লগআউট (${userEmail || ''})`}
-                className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/50 dark:hover:text-rose-300 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
+                onClick={onOpenExport}
+                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Logout</span>
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span>
               </button>
+            )}
+
+            {/* Unboxed Institutional Role Status */}
+            {!isMobileView && (
+              <span
+                title={userEmail || 'সাধারণ ভিউয়ার (Read-Only)'}
+                className={`hidden xl:inline-flex items-center gap-1 px-1.5 text-[11px] font-bold ${roleStatus.cls}`}
+              >
+                {!canEdit && <Lock className="w-3 h-3" />}
+                <span>{roleStatus.label}</span>
+              </span>
+            )}
+
+            {isAuthenticated ? (
+              !isMobileView && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title={`লগআউট (${userEmail || ''})`}
+                  className="px-2.5 py-1.5 text-xs font-semibold text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/50 dark:hover:text-rose-300 border border-stone-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              )
             ) : (
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-950/60 dark:hover:text-blue-300 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
+                className={`text-xs font-semibold text-stone-800 dark:text-slate-100 bg-stone-100 dark:bg-slate-800 hover:bg-[#eef5f2] hover:text-[#145343] dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300 border border-stone-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap ${
+                  isMobileView ? 'px-2.5 py-1.5 text-[11px]' : 'px-2.5 py-1.5'
+                }`}
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Admin Login</span>
+                <span>{isMobileView ? 'লগইন' : 'Admin Login'}</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Mobile Secondary Tabs */}
-        <div className="flex md:hidden border-t border-slate-200 dark:border-slate-800 py-2 gap-1 overflow-x-auto scrollbar-none">
+        {/* Desktop Secondary Tabs for Narrow Physical Screens (Mobile View uses Fixed Bottom Thumb Dock instead) */}
+        {isDesktopView && (
+        <div className="flex md:hidden border-t border-stone-200 dark:border-slate-800 py-2 gap-1 overflow-x-auto scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setActiveTab('live')}
+            className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap flex items-center gap-1 ${
+              activeTab === 'live'
+                ? 'bg-[#145343] text-white font-semibold'
+                : 'text-stone-600 dark:text-slate-300'
+            }`}
+          >
+            <Radio className="w-3 h-3" />
+            <span>Live Classes</span>
+          </button>
           <button
             type="button"
             onClick={() => setActiveTab('classes')}
             className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap ${
               activeTab === 'classes'
-                ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-semibold'
-                : 'text-slate-600 dark:text-slate-300'
+                ? 'bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 font-semibold'
+                : 'text-stone-600 dark:text-slate-300'
             }`}
           >
             Class Routines
@@ -363,8 +446,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => setActiveTab('teachers')}
             className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap ${
               activeTab === 'teachers'
-                ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-semibold'
-                : 'text-slate-600 dark:text-slate-300'
+                ? 'bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 font-semibold'
+                : 'text-stone-600 dark:text-slate-300'
             }`}
           >
             Teacher Routines
@@ -374,11 +457,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => setActiveTab('master')}
             className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap ${
               activeTab === 'master'
-                ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-semibold'
-                : 'text-slate-600 dark:text-slate-300'
+                ? 'bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 font-semibold'
+                : 'text-stone-600 dark:text-slate-300'
             }`}
           >
-            Master Timetable
+            Master Matrix
           </button>
           {canEdit && (
             <button
@@ -387,7 +470,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap ${
                 activeTab === 'proxy'
                   ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 font-semibold'
-                  : 'text-slate-600 dark:text-slate-300'
+                  : 'text-stone-600 dark:text-slate-300'
               }`}
             >
               Proxy (বদলি)
@@ -399,11 +482,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setActiveTab('conflicts')}
               className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'conflicts'
-                  ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-semibold'
-                  : 'text-slate-600 dark:text-slate-300'
+                  ? 'bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 font-semibold'
+                  : 'text-stone-600 dark:text-slate-300'
               }`}
             >
-              <span>Audit & Rules</span>
+              <span>Audit</span>
               {totalIssues > 0 && (
                 <span className="font-mono font-bold text-amber-600 dark:text-amber-400">({totalIssues})</span>
               )}
@@ -415,8 +498,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setActiveTab('control-panel')}
               className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'control-panel'
-                  ? 'bg-blue-700 text-white font-semibold'
-                  : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold'
+                  ? 'bg-[#145343] text-white font-semibold'
+                  : 'bg-[#eef5f2] dark:bg-emerald-950/60 text-[#145343] dark:text-emerald-300 font-semibold'
               }`}
             >
               <Shield className="w-3.5 h-3.5" />
@@ -424,8 +507,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
         </div>
+        )}
       </div>
     </header>
   );
 };
+
 

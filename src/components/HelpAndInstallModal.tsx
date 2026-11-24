@@ -9,7 +9,7 @@ import {
   Users,
   Grid3X3,
   UserMinus,
-  Sparkles,
+  Wand2,
   AlertTriangle,
   UploadCloud,
   FileSpreadsheet,
@@ -22,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { SchoolCrestLogo } from './SchoolCrestLogo';
 
 interface HelpAndInstallModalProps {
   isOpen: boolean;
@@ -64,16 +65,14 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
       <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         
         {/* Header */}
-        <div className="px-6 py-4.5 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white flex items-center justify-between shrink-0">
+        <div className="px-6 py-4.5 bg-[#145343] text-white flex items-center justify-between shrink-0 border-b border-[#d4a34a]/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center text-white border border-white/20">
-              <HelpCircle className="w-5 h-5" />
-            </div>
+            <SchoolCrestLogo className="w-10 h-10 shrink-0" />
             <div>
               <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
                 সহায়িকা ও মোবাইল অ্যাপ (APK/PWA) ইনস্টল গাইড
               </h2>
-              <p className="text-xs text-blue-100 font-medium mt-0.5">
+              <p className="text-xs text-emerald-100 font-medium mt-0.5">
                 User Guide & Mobile App (APK / Android Install) Instructions
               </p>
             </div>
@@ -417,7 +416,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2">
                   <div className="flex items-center gap-2.5 text-amber-700 dark:text-amber-400 font-bold text-sm">
                     <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                      <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <Wand2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     </div>
                     <span>৫. অটো রুটিন তৈরি (Auto-Fill)</span>
                   </div>

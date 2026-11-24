@@ -186,7 +186,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-blue-700 text-white flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-[#145343] text-white flex items-center justify-center shrink-0">
               <Shield className="w-6 h-6" />
             </div>
             <div>
@@ -354,7 +354,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
               >
                 <UserPlus className="w-4 h-4" />
                 <span>{submitting ? 'যুক্ত হচ্ছে...' : 'এডমিন হিসেবে অনুমোদন দিন'}</span>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
@@ -21,9 +21,18 @@ import {
   Copy,
   Check,
   Printer,
+  LayoutList,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  SlidersHorizontal,
+  Clock,
 } from 'lucide-react';
+import { useViewMode } from '../context/ViewModeContext';
+import { BENGALI_DAY_NAMES } from '../services/scheduleTiers';
+import { resolveLiveSlotStatus } from '../services/livePeriodClock';
 import { exportAllTeachersDocx, exportTeacherDocx } from '../services/exportDocx';
-import { exportTeacherPdf } from '../services/exportPdf';
+import { exportAllTeachersPdf, exportTeacherPdf } from '../services/exportPdf';
 import { AppState } from '../services/storage';
 import {
   getCombinedHinduRoom,
@@ -68,6 +77,47 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
   const [copiedSchedule, setCopiedSchedule] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState(false);
+  const { isMobileView } = useViewMode();
+  const [mobileFormat, setMobileFormat] = useState<'cards' | 'grid'>('cards');
+  const [mobileDay, setMobileDay] = useState<DayOfWeek>(() => {
+    const todayMap: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = todayMap[new Date().getDay()];
+    return workingDays.includes(today) ? today : workingDays[0] || 'Sunday';
+  });
+  const [now, setNow] = useState<Date>(() => new Date());
+  const touchStartXRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isMobileView) return;
+    const id = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(id);
+  }, [isMobileView]);
+
+  const activeMobileDay = workingDays.includes(mobileDay) ? mobileDay : workingDays[0] || 'Sunday';
+  const liveStatus = resolveLiveSlotStatus(periodTimings, workingDays, now);
+
+  const stepMobileDay = (delta: number) => {
+    if (workingDays.length === 0) return;
+    const idx = workingDays.indexOf(activeMobileDay);
+    const cur = idx === -1 ? 0 : idx;
+    const next = (cur + delta + workingDays.length) % workingDays.length;
+    setMobileDay(workingDays[next]);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null) return;
+    const endX = e.changedTouches[0]?.clientX ?? touchStartXRef.current;
+    const diff = endX - touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (Math.abs(diff) > 48) {
+      stepMobileDay(diff < 0 ? 1 : -1);
+    }
+  };
 
   const selectedTeacher =
     teachers.find(t => t.id === selectedTeacherId) || teachers[0];
@@ -144,237 +194,706 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
   };
 
   return (
-    <div className="space-y-5">
-      {/* Teacher Selector Strip */}
-      <div className="no-print bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-        <div className="flex items-center justify-between gap-4 mb-2">
-          <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-            Select Faculty Member (সকল শিক্ষক তালিকা)
-          </div>
-          <div className="text-xs text-slate-500 font-mono tabular-nums">
-            {teachers.length} faculty
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {teachers.map(t => {
-            const isSelected = t.id === selectedTeacher?.id;
-            const tEntries = entries.filter(e => e.teacherId === t.id);
-            const tCount = new Set(tEntries.map(e => `${e.day}_${e.periodIndex}`)).size;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedTeacherId(t.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-blue-700 text-white font-semibold'
-                    : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/70'
-                }`}
-              >
-                <span>{t.name}</span>
-                <span
-                  className={`font-mono text-[10px] tabular-nums ${
-                    isSelected ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'
-                  }`}
-                >
-                  {t.initials} · {tCount}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Controls, Quick Share & Exports */}
-      <div className="no-print bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1 max-w-xl">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+    <div className={isMobileView ? 'space-y-3.5' : 'space-y-5'}>
+      {isMobileView ? (
+        /* Compact Mobile Teacher Selector + Workload + Collapsible Exports */
+        <div className="no-print bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 p-3.5 space-y-3">
+          {/* Search & Dropdown */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search teacher by name or initials..."
+                placeholder="শিক্ষক খুঁজুন (নাম বা সংক্ষিপ্ত নাম)..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full min-h-[40px] pl-9 pr-3 py-2 text-xs bg-[#f7f5f0] dark:bg-slate-800 border border-stone-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-[#145343]"
               />
             </div>
 
             <select
               value={selectedTeacher?.id}
               onChange={e => setSelectedTeacherId(e.target.value)}
-              className="py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none font-medium"
+              className="w-full min-h-[42px] py-2 px-3 text-xs bg-[#f7f5f0] dark:bg-slate-800 border border-stone-200 dark:border-slate-700 rounded-xl text-stone-900 dark:text-slate-100 font-semibold focus:outline-none"
             >
-              {filteredTeachers.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.initials})
-                </option>
-              ))}
+              {filteredTeachers.map(t => {
+                const tEntries = entries.filter(en => en.teacherId === t.id);
+                const tCount = new Set(tEntries.map(en => `${en.day}_${en.periodIndex}`)).size;
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.initials}) · {tCount} পিরিয়ড
+                  </option>
+                );
+              })}
             </select>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          {/* Selected Teacher Compact Profile & Workload Row */}
+          {selectedTeacher && (
+            <div className="pt-2.5 border-t border-stone-100 dark:border-slate-800/80 space-y-2.5">
+              <div className="flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-300 font-bold flex items-center justify-center text-xs border border-[#bfd5cc] dark:border-emerald-800 shrink-0">
+                    {selectedTeacher.initials}
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                      {selectedTeacher.name}
+                    </h2>
+                    <div className="text-[11px] text-stone-500 dark:text-slate-400 truncate">
+                      {selectedTeacher.designation} ·{' '}
+                      <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
+                        {physicalPeriodCount}
+                        {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''}
+                      </span>{' '}
+                      পিরিয়ড ·{' '}
+                      <span className="font-mono tabular-nums">
+                        {Object.values(dailyLoad).filter(c => c > 0).length}/{workingDays.length}
+                      </span>{' '}
+                      দিন
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMobileActions(prev => !prev)}
+                  className={`min-h-[36px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 border transition-colors shrink-0 ${
+                    showMobileActions
+                      ? 'bg-[#eef5f2] dark:bg-emerald-950/60 border-[#bfd5cc] dark:border-emerald-800 text-[#145343] dark:text-emerald-300'
+                      : 'bg-stone-50 dark:bg-slate-800 border-stone-200 dark:border-slate-700 text-stone-700 dark:text-slate-200'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>শেয়ার/ডাউনলোড</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMobileActions ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {showMobileActions && (
+                <div className="pt-2 border-t border-stone-100 dark:border-slate-800/80 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyTeacherSchedule}
+                    className={`min-h-[40px] px-3 py-2 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 ${
+                      copiedSchedule
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800'
+                    }`}
+                  >
+                    {copiedSchedule ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSchedule ? 'কপি হয়েছে!' : 'কপি রুটিন'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>প্রিন্ট</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedTeacher) {
+                        exportTeacherDocx(selectedTeacher.id, fullAppState);
+                      }
+                    }}
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
+                    <span>Word (.docx)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedTeacher) {
+                        void exportTeacherPdf(selectedTeacher.id, fullAppState);
+                      }
+                    }}
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <FileCheck className="w-3.5 h-3.5 text-rose-700 dark:text-rose-400" />
+                    <span>PDF গ্রিড</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => exportAllTeachersDocx(fullAppState)}
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 border border-[#bfd5cc] dark:border-emerald-800 rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>সকল শিক্ষক Word</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void exportAllTeachersPdf(fullAppState)}
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <FileCheck className="w-3.5 h-3.5" />
+                    <span>সকল শিক্ষক PDF</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Teacher Selector Strip */}
+          <div className="no-print bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+            <div className="flex items-center justify-between gap-4 mb-2">
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                Select Faculty Member (সকল শিক্ষক তালিকা)
+              </div>
+              <div className="text-xs text-slate-500 font-mono tabular-nums">
+                {teachers.length} faculty
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {teachers.map(t => {
+                const isSelected = t.id === selectedTeacher?.id;
+                const tEntries = entries.filter(e => e.teacherId === t.id);
+                const tCount = new Set(tEntries.map(e => `${e.day}_${e.periodIndex}`)).size;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTeacherId(t.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[#145343] text-white font-semibold'
+                        : 'text-stone-700 dark:text-slate-200 bg-[#f7f5f0] dark:bg-slate-800 hover:bg-stone-100 dark:hover:bg-slate-700/70'
+                    }`}
+                  >
+                    <span>{t.name}</span>
+                    <span
+                      className={`font-mono text-[10px] tabular-nums ${
+                        isSelected ? 'text-emerald-200' : 'text-stone-400 dark:text-slate-500'
+                      }`}
+                    >
+                      {t.initials} · {tCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Controls, Quick Share & Exports */}
+          <div className="no-print bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 max-w-xl">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search teacher by name or initials..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <select
+                  value={selectedTeacher?.id}
+                  onChange={e => setSelectedTeacherId(e.target.value)}
+                  className="py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none font-medium"
+                >
+                  {filteredTeachers.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.initials})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      viewMode === 'table'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-semibold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>Table</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-semibold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Grid3X3 className="w-3.5 h-3.5" />
+                    <span>Grid</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyTeacherSchedule}
+                  title="শিক্ষকের সাপ্তাহিক রুটিন WhatsApp বা মেসেজের জন্য কপি করুন"
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                    copiedSchedule
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                  }`}
+                >
+                  {copiedSchedule ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSchedule ? 'কপি হয়েছে!' : 'কপি রুটিন'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Print this teacher's weekly schedule"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedTeacher) {
+                      exportTeacherDocx(selectedTeacher.id, fullAppState);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Download teacher Grid routine in Word"
+                >
+                  <FileText className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
+                  <span>Word</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedTeacher) {
+                      void exportTeacherPdf(selectedTeacher.id, fullAppState);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Download teacher Grid routine in PDF"
+                >
+                  <FileCheck className="w-3.5 h-3.5 text-rose-700 dark:text-rose-400" />
+                  <span>PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportAllTeachersDocx(fullAppState)}
+                  className="px-3 py-1.5 text-xs font-medium text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] dark:hover:bg-emerald-900/50 border border-[#bfd5cc] dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Export all teachers' Grid routines combined into one Word document"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>All Faculty Word</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void exportAllTeachersPdf(fullAppState)}
+                  className="px-3 py-1.5 text-xs font-medium text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Export all teachers' Grid routines combined into one PDF document"
+                >
+                  <FileCheck className="w-3.5 h-3.5" />
+                  <span>All Faculty PDF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Teacher Profile & Workload Strip */}
+          {selectedTeacher && (
+            <div className="bg-white dark:bg-[#141a20] rounded-xl border border-stone-200 dark:border-slate-800 p-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-300 font-bold flex items-center justify-center text-sm border border-[#bfd5cc] dark:border-emerald-800 shrink-0">
+                    {selectedTeacher.initials}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                        {selectedTeacher.name}
+                      </h2>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        · {selectedTeacher.designation}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span>Subjects:</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        {selectedTeacher.subjectIds
+                          .map(sId => subjectMap.get(sId)?.name || sId)
+                          .join(', ')}
+                      </span>
+                      <span>·</span>
+                      <span>Max Consecutive: {selectedTeacher.maxConsecutivePeriods || 2}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-5 px-4 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 shrink-0">
+                  <div>
+                    <div className="text-[10px] uppercase font-semibold text-slate-500">Weekly Periods</div>
+                    <div className="text-base font-mono font-bold text-slate-900 dark:text-white tabular-nums">
+                      {physicalPeriodCount}
+                      {teacherEntries.length > physicalPeriodCount ? (
+                        <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400 ml-1">
+                          ({teacherEntries.length} sec)
+                        </span>
+                      ) : configuredTargetPeriods > 0 ? (
+                        <span className="text-xs font-normal text-slate-500"> / {configuredTargetPeriods}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+                  <div>
+                    <div className="text-[10px] uppercase font-semibold text-slate-500">Active Days</div>
+                    <div className="text-base font-mono font-bold text-slate-900 dark:text-white tabular-nums">
+                      {Object.values(dailyLoad).filter(c => c > 0).length} / {workingDays.length}
+                    </div>
+                  </div>
+                  {teacherConflicts.length > 0 && (
+                    <>
+                      <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold text-amber-600">Alerts</div>
+                        <div className="text-base font-mono font-bold text-amber-600 tabular-nums">
+                          {teacherConflicts.length}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Mobile Now / Next Card & Format Switcher */}
+      {isMobileView && (
+        <div className="space-y-3">
+          {liveStatus.isWorkingDay && (liveStatus.currentWindow || liveStatus.nextWindow) && (() => {
+            const curWin = liveStatus.currentWindow;
+            const nextWin = liveStatus.nextWindow;
+            const curMatches = curWin
+              ? teacherEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === curWin.period.periodIndex)
+              : [];
+            const nextMatches = nextWin
+              ? teacherEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === nextWin.period.periodIndex)
+              : [];
+
+            const formatTeacherSlotSummary = (matches: TimetableEntry[]) => {
+              if (matches.length === 0) return 'ফ্রি পিরিয়ড';
+              const first = matches[0];
+              const sub = subjectMap.get(first.subjectId);
+              if (matches.length === 1) {
+                const cls = classMap.get(first.classId);
+                const sec = cls?.sections.find(s => s.id === first.sectionId);
+                const room = first.room || sec?.roomNumber;
+                return `${cls?.name || ''} · ${sec?.name || ''} — ${sub?.name || ''}${room ? ` (রুম ${room})` : ''}`;
+              }
+              return `যৌথ ${matches.length} শাখা — ${sub?.name || ''}`;
+            };
+
+            return (
+              <div className="bg-[#eef5f2]/90 dark:bg-emerald-950/35 border border-[#bfd5cc] dark:border-emerald-800/70 rounded-2xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-[#145343] dark:text-emerald-300">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>আজকের ক্লাস স্ট্যাটাস ({BENGALI_DAY_NAMES[liveStatus.todayEnum]})</span>
+                  </span>
+                  {liveStatus.remainingMinutes !== null && (
+                    <span className="font-mono tabular-nums">
+                      বাকি {liveStatus.remainingMinutes} মি.
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-1.5">
+                  {curWin && (
+                    <div className="bg-white/85 dark:bg-slate-900/80 rounded-xl px-3 py-2 flex items-center justify-between gap-2 border border-emerald-200/70 dark:border-emerald-900/50">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                          চলমান · {curWin.period.label}
+                        </div>
+                        <div className="text-xs font-bold text-stone-900 dark:text-white truncate">
+                          {curWin.period.isBreak || curWin.period.isLocked
+                            ? 'টিফিন বিরতি'
+                            : formatTeacherSlotSummary(curMatches)}
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono text-stone-500 dark:text-slate-400 tabular-nums shrink-0">
+                        {curWin.period.startTime}–{curWin.period.endTime}
+                      </span>
+                    </div>
+                  )}
+
+                  {nextWin && (
+                    <div className="bg-white/60 dark:bg-slate-900/50 rounded-xl px-3 py-2 flex items-center justify-between gap-2 border border-stone-200/70 dark:border-slate-800">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-slate-400">
+                          পরবর্তী · {nextWin.period.label}
+                        </div>
+                        <div className="text-xs font-semibold text-stone-800 dark:text-slate-200 truncate">
+                          {formatTeacherSlotSummary(nextMatches)}
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono text-stone-500 dark:text-slate-400 tabular-nums shrink-0">
+                        {nextWin.period.startTime}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="no-print flex items-center justify-between gap-2 bg-white dark:bg-slate-900 rounded-xl border border-stone-200 dark:border-slate-800 px-3 py-2">
+            <span className="text-xs font-semibold text-stone-600 dark:text-slate-300">
+              শিডিউল ভিউ
+            </span>
+            <div className="flex items-center p-0.5 bg-stone-100 dark:bg-slate-800 rounded-lg border border-stone-200 dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-semibold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                onClick={() => setMobileFormat('cards')}
+                className={`min-h-[32px] px-2.5 py-1 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors ${
+                  mobileFormat === 'cards'
+                    ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                    : 'text-stone-600 dark:text-slate-400'
                 }`}
               >
-                <List className="w-3.5 h-3.5" />
-                <span>Table</span>
+                <LayoutList className="w-3.5 h-3.5" />
+                <span>টাইমলাইন</span>
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-semibold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                onClick={() => setMobileFormat('grid')}
+                className={`min-h-[32px] px-2.5 py-1 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors ${
+                  mobileFormat === 'grid'
+                    ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                    : 'text-stone-600 dark:text-slate-400'
                 }`}
               >
                 <Grid3X3 className="w-3.5 h-3.5" />
-                <span>Grid</span>
+                <span>পূর্ণ গ্রিড</span>
               </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleCopyTeacherSchedule}
-              title="শিক্ষকের সাপ্তাহিক রুটিন WhatsApp বা মেসেজের জন্য কপি করুন"
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
-                copiedSchedule
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
-              }`}
-            >
-              {copiedSchedule ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedSchedule ? 'কপি হয়েছে!' : 'কপি রুটিন'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
-              title="Print this teacher's weekly schedule"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedTeacher) {
-                  exportTeacherDocx(selectedTeacher.id, fullAppState);
-                }
-              }}
-              className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
-              title="Download teacher routine in Word"
-            >
-              <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Word</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedTeacher) {
-                  exportTeacherPdf(selectedTeacher.id, fullAppState);
-                }
-              }}
-              className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1.5"
-              title="Download teacher routine in PDF"
-            >
-              <FileCheck className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-              <span>PDF</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => exportAllTeachersDocx(fullAppState)}
-              className="px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors flex items-center gap-1.5"
-              title="Export all teachers' routines combined into one document"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>All Faculty</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Selected Teacher Profile & Workload Strip */}
-      {selectedTeacher && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-sm border border-blue-200 dark:border-blue-800 shrink-0">
-                {selectedTeacher.initials}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                    {selectedTeacher.name}
-                  </h2>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    · {selectedTeacher.designation}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                  <span>Subjects:</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300">
-                    {selectedTeacher.subjectIds
-                      .map(sId => subjectMap.get(sId)?.name || sId)
-                      .join(', ')}
-                  </span>
-                  <span>·</span>
-                  <span>Max Consecutive: {selectedTeacher.maxConsecutivePeriods || 2}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-5 px-4 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 shrink-0">
-              <div>
-                <div className="text-[10px] uppercase font-semibold text-slate-500">Weekly Periods</div>
-                <div className="text-base font-mono font-bold text-slate-900 dark:text-white tabular-nums">
-                  {physicalPeriodCount}
-                  {teacherEntries.length > physicalPeriodCount ? (
-                    <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400 ml-1">
-                      ({teacherEntries.length} sec)
-                    </span>
-                  ) : configuredTargetPeriods > 0 ? (
-                    <span className="text-xs font-normal text-slate-500"> / {configuredTargetPeriods}</span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
-              <div>
-                <div className="text-[10px] uppercase font-semibold text-slate-500">Active Days</div>
-                <div className="text-base font-mono font-bold text-slate-900 dark:text-white tabular-nums">
-                  {Object.values(dailyLoad).filter(c => c > 0).length} / {workingDays.length}
-                </div>
-              </div>
-              {teacherConflicts.length > 0 && (
-                <>
-                  <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
-                  <div>
-                    <div className="text-[10px] uppercase font-semibold text-amber-600">Alerts</div>
-                    <div className="text-base font-mono font-bold text-amber-600 tabular-nums">
-                      {teacherConflicts.length}
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Table vs Grid */}
-      {viewMode === 'table' ? (
+      {/* Mobile Day-by-Day Swipeable Teacher Timeline vs Desktop Table / Grid */}
+      {isMobileView && mobileFormat === 'cards' ? (
+        <div
+          className="space-y-2.5"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Day Stepper Header */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 p-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => stepMobileDay(-1)}
+                aria-label="পূর্ববর্তী দিন"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-200 hover:bg-stone-200 dark:hover:bg-slate-700"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="text-center min-w-0">
+                <div className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                  {BENGALI_DAY_NAMES[activeMobileDay] || activeMobileDay}
+                  {liveStatus.isWorkingDay && activeMobileDay === liveStatus.todayEnum && (
+                    <span className="text-xs font-semibold text-[#145343] dark:text-emerald-400"> · আজ</span>
+                  )}
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-slate-400 font-mono tabular-nums">
+                  {dailyLoad[activeMobileDay] || 0} টি পিরিয়ড · সোয়াইপ করুন
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => stepMobileDay(1)}
+                aria-label="পরবর্তী দিন"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-200 hover:bg-stone-200 dark:hover:bg-slate-700"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+              {workingDays.map(day => {
+                const active = day === activeMobileDay;
+                const shortBn = BENGALI_DAY_NAMES[day]?.replace('বার', '') || day.slice(0, 3);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setMobileDay(day)}
+                    className={`min-h-[36px] flex-1 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
+                      active
+                        ? 'bg-[#145343] text-white'
+                        : 'bg-[#f7f5f0] dark:bg-slate-800 text-stone-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {shortBn}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 divide-y divide-stone-100 dark:divide-slate-800 overflow-hidden">
+            {allDisplayPeriods.map(period => {
+              const isBreak = period.isBreak || period.isLocked;
+              const isLivePeriod =
+                liveStatus.isWorkingDay &&
+                activeMobileDay === liveStatus.todayEnum &&
+                liveStatus.currentWindow?.period.periodIndex === period.periodIndex;
+
+              if (isBreak) {
+                return (
+                  <div
+                    key={period.periodIndex}
+                    className={`px-3.5 py-3 flex items-center gap-3 ${
+                      isLivePeriod
+                        ? 'bg-amber-100/70 dark:bg-amber-950/40'
+                        : 'bg-amber-50/55 dark:bg-amber-950/20'
+                    }`}
+                  >
+                    <div className="w-16 shrink-0 font-mono tabular-nums">
+                      <div className="text-[11px] font-bold text-amber-900 dark:text-amber-300">{period.startTime}</div>
+                      <div className="text-[10px] text-amber-700/80 dark:text-amber-400/70">{period.endTime}</div>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                        টিফিন বিরতি
+                      </span>
+                      <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                        {isLivePeriod ? 'চলমান বিরতি' : 'বিরতি'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              const slotMatches = teacherEntries.filter(
+                e => e.day === activeMobileDay && e.periodIndex === period.periodIndex
+              );
+              const primaryColor = slotMatches[0] ? subjectMap.get(slotMatches[0].subjectId)?.color || '#145343' : undefined;
+
+              return (
+                <div
+                  key={period.periodIndex}
+                  className={`px-3.5 py-3.5 flex items-center gap-3 transition-colors ${
+                    isLivePeriod ? 'bg-[#eef5f2]/65 dark:bg-emerald-950/30' : ''
+                  }`}
+                >
+                  <div className="w-16 shrink-0 font-mono tabular-nums">
+                    <div className={`text-[11px] font-bold ${isLivePeriod ? 'text-[#145343] dark:text-emerald-300' : 'text-stone-800 dark:text-slate-200'}`}>
+                      {period.startTime}
+                    </div>
+                    <div className="text-[10px] text-stone-400 dark:text-slate-500">
+                      {period.endTime}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      isLivePeriod
+                        ? 'ring-4 ring-emerald-500/20 bg-[#145343] dark:bg-emerald-400'
+                        : slotMatches.length === 0
+                        ? 'border border-stone-300 dark:border-slate-600'
+                        : ''
+                    }`}
+                    style={!isLivePeriod && primaryColor ? { backgroundColor: primaryColor } : undefined}
+                  />
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 text-[11px] mb-0.5">
+                      <span className="font-semibold text-stone-500 dark:text-slate-400">
+                        {period.label}
+                      </span>
+                      {isLivePeriod && liveStatus.remainingMinutes !== null && (
+                        <span className="font-semibold text-[#145343] dark:text-emerald-400 font-mono tabular-nums">
+                          চলমান · {liveStatus.remainingMinutes}মি বাকি
+                        </span>
+                      )}
+                    </div>
+
+                    {slotMatches.length === 0 ? (
+                      <div className="text-xs text-stone-400 dark:text-slate-500 py-0.5">
+                        ফ্রি পিরিয়ড
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {slotMatches.map(match => {
+                          const cls = classMap.get(match.classId);
+                          const sec = cls?.sections.find(s => s.id === match.sectionId);
+                          const sub = subjectMap.get(match.subjectId);
+                          const room = match.room || sec?.roomNumber;
+                          return (
+                            <div
+                              key={match.id}
+                              onClick={() => {
+                                if (!readOnly) {
+                                  onOpenEditSlot(match.classId, match.sectionId, activeMobileDay, period.periodIndex);
+                                }
+                              }}
+                              className={`flex items-center justify-between gap-2 ${readOnly ? '' : 'cursor-pointer'}`}
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                                  {sub?.name || 'Subject'}
+                                </div>
+                                <div className="text-xs font-medium text-[#145343] dark:text-emerald-400 truncate">
+                                  {cls?.name} · {sec?.name}
+                                  {room ? ` · রুম ${room}` : ''}
+                                </div>
+                              </div>
+                              {!readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    onClearSlot(match.id);
+                                  }}
+                                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 shrink-0 -mr-2"
+                                  title="মুছে ফেলুন"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : viewMode === 'table' ? (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div>

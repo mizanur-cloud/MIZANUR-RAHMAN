@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { SchoolClass, Subject, Teacher, TimetableEntry } from '../types';
+import { DayOfWeek, PeriodTiming, SchoolClass, Subject, Teacher, TimetableEntry } from '../types';
+import { INITIAL_SETTINGS } from '../data/initialData';
 import {
   X,
   Plus,
@@ -7,16 +8,22 @@ import {
   Edit2,
   Check,
   BookOpen,
-  Sparkles,
+  RefreshCw,
   Layers,
   Palette,
   Search,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { syncTeacherAssignmentsToClasses, syncClassesToTeachers } from '../services/teacherSubjectSync';
-import { getEffectiveSectionRequirements, isPlayOrNursery, isTeacherBlockTeacher } from '../services/parallelSubjects';
+import {
+  getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
+  isPlayOrNursery,
+  isTeacherBlockTeacher,
+} from '../services/parallelSubjects';
 
 interface SubjectManagementModalProps {
   isOpen: boolean;
@@ -25,6 +32,8 @@ interface SubjectManagementModalProps {
   subjects: Subject[];
   teachers: Teacher[];
   entries?: TimetableEntry[];
+  workingDays?: DayOfWeek[];
+  periodTimings?: PeriodTiming[];
   initialClassId?: string;
   onUpdateSubjects: (updatedSubjects: Subject[]) => void;
   onUpdateClasses: (updatedClasses: SchoolClass[]) => void;
@@ -33,7 +42,7 @@ interface SubjectManagementModalProps {
     classId: string,
     sectionId: string,
     subjectId: string,
-    patch: { periodsPerWeek?: number; assignedTeacherId?: string }
+    patch: { periodsPerWeek?: number; assignedTeacherId?: string; fixedPeriodIndices?: number[] }
   ) => void;
   onDeleteGlobalSubject?: (subjectId: string) => void;
   onRemoveSubjectFromClass?: (classId: string, subjectId: string) => void;
@@ -64,6 +73,8 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
   subjects,
   teachers,
   entries = [],
+  workingDays = INITIAL_SETTINGS.workingDays,
+  periodTimings = INITIAL_SETTINGS.periodTimings,
   initialClassId,
   onUpdateSubjects,
   onUpdateClasses,
@@ -93,11 +104,14 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
   const [newSubName, setNewSubName] = useState('');
   const [newSubCode, setNewSubCode] = useState('');
   const [newSubColor, setNewSubColor] = useState('#3B82F6');
+  const [newSubFixedPeriods, setNewSubFixedPeriods] = useState<number[]>([]);
 
   // Add subject to active class state
   const [addSubjectIdToClass, setAddSubjectIdToClass] = useState<string>('');
   const [addSubjectPeriods, setAddSubjectPeriods] = useState<number>(5);
   const [addSubjectTeacherId, setAddSubjectTeacherId] = useState<string>('');
+
+  const teachingPeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
 
   if (!isOpen) return null;
 
@@ -123,14 +137,18 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
         .slice(0, 3)
         .toUpperCase();
 
+    const sortedFixed = Array.from(new Set(newSubFixedPeriods)).sort((a, b) => a - b);
+
     if (editingSubject) {
       const updated = subjects.map(s => {
         if (s.id === editingSubject.id) {
+          const { fixedPeriodIndices: _prevFixed, ...rest } = s;
           return {
-            ...s,
+            ...rest,
             name: newSubName.trim(),
             code,
             color: newSubColor,
+            ...(sortedFixed.length > 0 ? { fixedPeriodIndices: sortedFixed } : {}),
           };
         }
         return s;
@@ -144,6 +162,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
         name: newSubName.trim(),
         code,
         color: newSubColor,
+        ...(sortedFixed.length > 0 ? { fixedPeriodIndices: sortedFixed } : {}),
       };
       onUpdateSubjects([...subjects, newSub]);
       setDeleteNotice(`নতুন বিষয় "${newSub.name}" সফলভাবে যুক্ত করা হয়েছে!`);
@@ -153,6 +172,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
     setNewSubName('');
     setNewSubCode('');
     setNewSubColor('#3B82F6');
+    setNewSubFixedPeriods([]);
     setTimeout(() => setDeleteNotice(''), 4000);
   };
 
@@ -227,11 +247,12 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
     setAddSubjectTeacherId('');
   };
 
-  // 4. Update Periods or Teacher for Class Subject
+  // 4. Update Periods, Teacher, or Fixed Period Restriction for Class Subject
   const handleUpdateClassRequirement = (
     subjectId: string,
     periodsPerWeek: number,
-    assignedTeacherId?: string
+    assignedTeacherId?: string,
+    fixedPeriodUpdate?: { value: number[] | undefined }
   ) => {
     const updatedClasses = classes.map(c => {
       if (c.id === activeClass.id) {
@@ -241,10 +262,16 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
           if (periodsPerWeek <= 0) {
             newReqs.splice(idx, 1);
           } else {
+            const nextFixed = fixedPeriodUpdate
+              ? fixedPeriodUpdate.value
+              : newReqs[idx].fixedPeriodIndices;
+            const { fixedPeriodIndices: _oldFixed, ...restReq } = newReqs[idx];
             newReqs[idx] = {
+              ...restReq,
               subjectId,
               periodsPerWeek,
               assignedTeacherId: assignedTeacherId || undefined,
+              ...(nextFixed !== undefined ? { fixedPeriodIndices: nextFixed } : {}),
             };
           }
         }
@@ -446,7 +473,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                     className="px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center gap-1.5 shrink-0 transition-colors shadow-2xs"
                     title="শিক্ষক ব্যবস্থাপনা (Faculty Management) থেকে সকল শিক্ষকের অ্যাসাইনকৃত ক্লাস ও বিষয়সমূহ এখানে অটো-সিঙ্ক করুন"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
                     <span>টিচারদের তথ্য থেকে অটো-সিঙ্ক</span>
                   </button>
 
@@ -596,20 +623,21 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                   )}
 
                   {/* Table of active subjects in this class / selected section */}
-                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs">
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto shadow-2xs">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                         <tr>
                           <th className="py-2.5 px-3 font-semibold">Subject Name</th>
-                          <th className="py-2.5 px-3 font-semibold w-28 text-center">Periods/Wk</th>
+                          <th className="py-2.5 px-3 font-semibold w-24 text-center">Periods/Wk</th>
                           <th className="py-2.5 px-3 font-semibold">Assigned Teacher</th>
-                          <th className="py-2.5 px-3 font-semibold text-right w-24">Actions</th>
+                          <th className="py-2.5 px-3 font-semibold">নির্দিষ্ট পিরিয়ড (Fixed)</th>
+                          <th className="py-2.5 px-3 font-semibold text-right w-20">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {activeClass.subjectRequirements.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="py-8 text-center text-slate-400">
+                            <td colSpan={5} className="py-8 text-center text-slate-400">
                               এই শ্রেণিতে এখনো কোনো বিষয় অন্তর্ভুক্ত করা হয়নি। উপরের ফরম থেকে বিষয় যোগ করুন।
                             </td>
                           </tr>
@@ -642,6 +670,26 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                 ? effForRow?.assignedTeacherId ?? ''
                                 : req.assignedTeacherId || '';
 
+                              const parentGlobalFixed =
+                                subject?.fixedPeriodIndices && subject.fixedPeriodIndices.length > 0
+                                  ? subject.fixedPeriodIndices
+                                  : undefined;
+                              const parentClassOrGlobalFixed =
+                                req.fixedPeriodIndices !== undefined
+                                  ? req.fixedPeriodIndices.length > 0
+                                    ? req.fixedPeriodIndices
+                                    : undefined
+                                  : parentGlobalFixed;
+
+                              const effectiveFixedPeriods = scopedSection
+                                ? getEffectiveSubjectFixedPeriods(
+                                    activeClass,
+                                    scopedSection.id,
+                                    req.subjectId,
+                                    subjects
+                                  )
+                                : parentClassOrGlobalFixed;
+
                               const updateRow = (nextPeriods: number, nextTeacherId?: string) => {
                                 if (scopedSection && onUpdateSectionSubjectConfig) {
                                   onUpdateSectionSubjectConfig(
@@ -661,6 +709,56 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                   );
                                 }
                               };
+
+                              const setRowFixedPeriods = (nextList: number[] | undefined) => {
+                                const cleaned =
+                                  nextList && nextList.length > 0
+                                    ? Array.from(new Set(nextList)).sort((a, b) => a - b)
+                                    : undefined;
+
+                                if (scopedSection && onUpdateSectionSubjectConfig) {
+                                  const val =
+                                    cleaned !== undefined
+                                      ? cleaned
+                                      : parentClassOrGlobalFixed
+                                      ? []
+                                      : undefined;
+                                  onUpdateSectionSubjectConfig(
+                                    activeClass.id,
+                                    scopedSection.id,
+                                    req.subjectId,
+                                    { fixedPeriodIndices: val }
+                                  );
+                                } else {
+                                  const val =
+                                    cleaned !== undefined
+                                      ? cleaned
+                                      : parentGlobalFixed
+                                      ? []
+                                      : undefined;
+                                  handleUpdateClassRequirement(
+                                    req.subjectId,
+                                    displayPeriods,
+                                    displayTeacherId || undefined,
+                                    { value: val }
+                                  );
+                                }
+                              };
+
+                              const toggleRowFixedPeriod = (pIdx: number) => {
+                                const cur = effectiveFixedPeriods || [];
+                                const next = cur.includes(pIdx)
+                                  ? cur.filter(p => p !== pIdx)
+                                  : [...cur, pIdx];
+                                setRowFixedPeriods(next);
+                              };
+
+                              const maxPossibleInFixed =
+                                effectiveFixedPeriods && effectiveFixedPeriods.length > 0
+                                  ? effectiveFixedPeriods.length * workingDays.length
+                                  : null;
+                              const isFixedCapacityTight =
+                                maxPossibleInFixed !== null && maxPossibleInFixed < displayPeriods;
 
                               const toggleSecSubject = () => {
                                 if (!scopedSection) return;
@@ -781,6 +879,48 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                     </select>
                                   </td>
 
+                                  {/* Fixed Period Constraint Selector */}
+                                  <td className="py-2 px-3">
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={scopedSection ? !isSecSelected : false}
+                                        onClick={() => setRowFixedPeriods(undefined)}
+                                        className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border transition-colors disabled:opacity-40 ${
+                                          !effectiveFixedPeriods || effectiveFixedPeriods.length === 0
+                                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900'
+                                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                        }`}
+                                      >
+                                        যেকোনো
+                                      </button>
+                                      {teachingPeriods.map(tp => {
+                                        const isPinned = effectiveFixedPeriods?.includes(tp.periodIndex);
+                                        return (
+                                          <button
+                                            key={tp.periodIndex}
+                                            type="button"
+                                            disabled={scopedSection ? !isSecSelected : false}
+                                            onClick={() => toggleRowFixedPeriod(tp.periodIndex)}
+                                            title={`${tp.label} (${tp.startTime} - ${tp.endTime})`}
+                                            className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border transition-colors disabled:opacity-40 ${
+                                              isPinned
+                                                ? 'bg-blue-700 text-white border-blue-700'
+                                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                            }`}
+                                          >
+                                            P{tp.periodIndex}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    {isFixedCapacityTight && (
+                                      <div className="mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                                        সর্বোচ্চ {maxPossibleInFixed} ক্লাস সম্ভব ({displayPeriods}টি চাই)
+                                      </div>
+                                    )}
+                                  </td>
+
                                   {/* Remove Button from Class */}
                                   <td className="py-2 px-3 text-right">
                                     {!scopedSection ? (
@@ -837,6 +977,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                     setNewSubName('');
                     setNewSubCode('');
                     setNewSubColor('#3B82F6');
+                    setNewSubFixedPeriods([]);
                   }}
                   className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg flex items-center gap-1.5 shadow-xs shrink-0"
                 >
@@ -916,6 +1057,49 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                   </div>
                 </div>
 
+                {/* Global Default Fixed Period Selector */}
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                    নির্দিষ্ট পিরিয়ড ডিফল্ট (Global Fixed Period — ঐচ্ছিক):
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setNewSubFixedPeriods([])}
+                      className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition-colors ${
+                        newSubFixedPeriods.length === 0
+                          ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      যেকোনো পিরিয়ড (Any)
+                    </button>
+                    {teachingPeriods.map(tp => {
+                      const active = newSubFixedPeriods.includes(tp.periodIndex);
+                      return (
+                        <button
+                          key={tp.periodIndex}
+                          type="button"
+                          onClick={() =>
+                            setNewSubFixedPeriods(prev =>
+                              prev.includes(tp.periodIndex)
+                                ? prev.filter(p => p !== tp.periodIndex)
+                                : [...prev, tp.periodIndex].sort((a, b) => a - b)
+                            )
+                          }
+                          className={`px-2 py-1 text-[11px] font-mono font-bold rounded-md border transition-colors ${
+                            active
+                              ? 'bg-blue-700 text-white border-blue-700'
+                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-blue-400'
+                          }`}
+                        >
+                          P{tp.periodIndex}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="pt-2 flex justify-end gap-2">
                   <button
                     type="button"
@@ -975,6 +1159,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                             setNewSubName(sub.name);
                             setNewSubCode(sub.code);
                             setNewSubColor(sub.color);
+                            setNewSubFixedPeriods(sub.fixedPeriodIndices ? [...sub.fixedPeriodIndices] : []);
                           }}
                           title="Edit subject name or code"
                           className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
@@ -991,6 +1176,15 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                         </button>
                       </div>
                     </div>
+
+                    {sub.fixedPeriodIndices && sub.fixedPeriodIndices.length > 0 && (
+                      <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        <span>
+                          নির্দিষ্ট পিরিয়ড: {sub.fixedPeriodIndices.map(p => `P${p}`).join(', ')}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700/60 truncate">
                       অন্তর্ভুক্ত শ্রেণি:{' '}

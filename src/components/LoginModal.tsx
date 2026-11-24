@@ -13,6 +13,7 @@ import {
   LogIn,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { SchoolCrestLogo } from './SchoolCrestLogo';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -94,13 +95,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
+        <div className="px-6 py-4 border-b border-stone-200 dark:border-slate-800 flex items-center justify-between bg-[#f7f5f0] dark:bg-slate-800/50">
+          <div className="flex items-center gap-3">
+            <SchoolCrestLogo className="w-9 h-9 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              <h2 className="text-sm font-bold text-stone-900 dark:text-white">
                 নিরাপদ অ্যাকাউন্ট লগইন (RBAC)
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -282,7 +281,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition-colors disabled:opacity-60"
+              className="w-full py-2.5 px-4 rounded-xl bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-bold transition-colors disabled:opacity-60"
             >
               {loading
                 ? 'অপেক্ষা করুন...'

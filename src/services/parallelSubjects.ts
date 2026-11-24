@@ -1,4 +1,4 @@
-import { SchoolClass, SchoolSettings, Subject, SubjectRequirement, Teacher } from '../types';
+import { DayOfWeek, SchoolClass, SchoolSettings, Subject, SubjectRequirement, Teacher } from '../types';
 
 export type ParallelGroup = 'hmt_agr' | 'rel_hin';
 
@@ -381,3 +381,49 @@ export function isSubjectSelectedForSection(
   const periods = cfg?.periodsPerWeek !== undefined ? cfg.periodsPerWeek : base?.periodsPerWeek ?? 0;
   return (Boolean(base) || Boolean(cfg)) && periods > 0;
 }
+
+/**
+ * Checks whether a teacher is blocked / marked unavailable at a given (day, periodIndex)
+ * via either period-wide blocks (`unavailablePeriods`) or specific Day+Period slots (`unavailableSlots`).
+ */
+export function isTeacherBlockedAtSlot(
+  teacher: Pick<Teacher, 'unavailableSlots' | 'unavailablePeriods'> | undefined,
+  day: DayOfWeek,
+  periodIndex: number
+): boolean {
+  if (!teacher) return false;
+  if (teacher.unavailablePeriods?.includes(periodIndex)) return true;
+  return Boolean(teacher.unavailableSlots?.some(u => u.day === day && u.periodIndex === periodIndex));
+}
+
+/**
+ * Resolves the allowed/fixed period indices for a subject inside a specific class & section.
+ * Priority: Section override -> Class Requirement -> Global Subject default -> undefined (any period).
+ */
+export function getEffectiveSubjectFixedPeriods(
+  cls: SchoolClass | undefined,
+  sectionId: string,
+  subjectId: string,
+  subjects?: Subject[]
+): number[] | undefined {
+  if (!cls || isPlayOrNursery(cls)) return undefined;
+  const sec = cls.sections.find(s => s.id === sectionId);
+  const secCfg = sec?.subjectConfigs?.[subjectId];
+
+  if (secCfg && secCfg.fixedPeriodIndices !== undefined) {
+    return secCfg.fixedPeriodIndices.length > 0 ? secCfg.fixedPeriodIndices : undefined;
+  }
+
+  const classReq = cls.subjectRequirements.find(r => r.subjectId === subjectId);
+  if (classReq && classReq.fixedPeriodIndices !== undefined) {
+    return classReq.fixedPeriodIndices.length > 0 ? classReq.fixedPeriodIndices : undefined;
+  }
+
+  const sub = subjects?.find(s => s.id === subjectId);
+  if (sub?.fixedPeriodIndices && sub.fixedPeriodIndices.length > 0) {
+    return sub.fixedPeriodIndices;
+  }
+
+  return undefined;
+}
+

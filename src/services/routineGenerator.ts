@@ -6,6 +6,7 @@ import {
   getCombinedHinduRoom,
   getCombinedHinduTeacherId,
   getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
   getExpectedSectionTeacherId,
   getMaxReligionConcurrentSections,
   isAgricultureSubject,
@@ -20,6 +21,7 @@ import {
   isReligionSubject,
   isSubjectSelectedForSection,
   isTeacherBlockTeacher,
+  isTeacherBlockedAtSlot,
 } from './parallelSubjects';
 import { RoutineVerificationReport, verifyRoutine } from './routineVerifier';
 
@@ -82,6 +84,8 @@ interface ScheduledItemTask {
   dedicatedCount: number;
   maxDedicatedLoad: number;
   isOverloadedPrimary: boolean;
+  hasFixedPeriod: boolean;
+  fixedPeriodCount: number;
   subjectPeriodsCount: number;
   subjectInstanceIndex: number;
   orderIndex: number;
@@ -579,6 +583,45 @@ export function generateSmartTimetable(
   const sectionContextMap = new Map<string, SectionContext>();
   const sectionSubjectTarget = new Map<string, number>(); // "classId_sectionId_subjectId" -> targetPeriodsPerWeek
 
+  const getAllowedPeriodsForPair = (
+    cls: SchoolClass,
+    secId: string,
+    item: ParallelPairItem
+  ): number[] | undefined => {
+    const p1 = getEffectiveSubjectFixedPeriods(cls, secId, item.primary.subjectId, subjects);
+    const p2 = item.partner
+      ? getEffectiveSubjectFixedPeriods(cls, secId, item.partner.subjectId, subjects)
+      : undefined;
+    if (p1 && p2) return p1.filter(idx => p2.includes(idx));
+    return p1 || p2;
+  };
+
+  const isPeriodAllowedForSubject = (
+    classId: string,
+    sectionId: string,
+    subjectId: string,
+    periodIndex: number
+  ): boolean => {
+    const cls = classMap.get(classId);
+    const allowed = getEffectiveSubjectFixedPeriods(cls, sectionId, subjectId, subjects);
+    if (!allowed) return true;
+    return allowed.includes(periodIndex);
+  };
+
+  const isPeriodAllowedForPair = (
+    sectionCtx: SectionContext,
+    item: ParallelPairItem,
+    periodIndex: number
+  ): boolean => {
+    const allowed = getAllowedPeriodsForPair(sectionCtx.classObj, sectionCtx.sectionId, item);
+    if (!allowed) return true;
+    return allowed.includes(periodIndex);
+  };
+
+  // Track which periods inside each section are claimed by fixed-period subjects
+  // so flexible subjects avoid taking them unnecessarily
+  const sectionReservedFixedPeriods = new Map<string, Set<number>>();
+
   for (const { classObj, sectionId, sectionName, room, sectionIndex } of targetSections) {
     const availableSlots: { day: DayOfWeek; periodIndex: number }[] = [];
     workingDays.forEach(day => {
@@ -616,7 +659,7 @@ export function generateSmartTimetable(
 
         const chosenTeacher = orderedTeachers.find(t => {
           if (teacherBookings.has(`${t.id}_${slot.day}_${slot.periodIndex}`)) return false;
-          if (t.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) return false;
+          if (isTeacherBlockedAtSlot(t, slot.day, slot.periodIndex)) return false;
           return true;
         });
 
@@ -848,6 +891,16 @@ export function generateSmartTimetable(
 
       const hasPrimaryDedicated = dedicatedCandidates.length > 0;
       const hasPartnerDedicated = partnerDedicatedCandidates.length > 0;
+      const allowedPeriods = getAllowedPeriodsForPair(classObj, sectionId, pairItem);
+      const hasFixedPeriod = allowedPeriods !== undefined;
+      const fixedPeriodCount = allowedPeriods ? allowedPeriods.length : teachingPeriods.length;
+
+      if (allowedPeriods && allowedPeriods.length > 0) {
+        const secKey = `${classObj.id}_${sectionId}`;
+        const rSet = sectionReservedFixedPeriods.get(secKey) || new Set<number>();
+        allowedPeriods.forEach(p => rSet.add(p));
+        sectionReservedFixedPeriods.set(secKey, rSet);
+      }
 
       kg10Tasks.push({
         sectionCtx,
@@ -859,6 +912,8 @@ export function generateSmartTimetable(
         dedicatedCount: dedicatedCandidates.length,
         maxDedicatedLoad: 0,
         isOverloadedPrimary: false,
+        hasFixedPeriod,
+        fixedPeriodCount,
         subjectPeriodsCount: subTotalCounts.get(pairItem.primary.subjectId) || 0,
         subjectInstanceIndex: subInstIdx,
         orderIndex: idx,
@@ -897,6 +952,11 @@ export function generateSmartTimetable(
   // 5. Morning-only junior sections (KG - Class 2, fewer open slots) BEFORE Class 3-10
   // 6. For overloaded teachers (>30/wk), round-robin subjectInstanceIndex BEFORE grade/section so no class/day is starved to 0!
   kg10Tasks.sort((a, b) => {
+    // Subjects with Fixed/Restricted periods MUST claim their slots before flexible subjects fill them
+    if (a.hasFixedPeriod !== b.hasFixedPeriod) return a.hasFixedPeriod ? -1 : 1;
+    if (a.hasFixedPeriod && b.hasFixedPeriod && a.fixedPeriodCount !== b.fixedPeriodCount) {
+      return a.fixedPeriodCount - b.fixedPeriodCount;
+    }
     if (a.hasDedicated !== b.hasDedicated) return a.hasDedicated ? -1 : 1;
     if (a.hasDedicated && b.hasDedicated && a.isOverloadedPrimary !== b.isOverloadedPrimary) {
       return a.isOverloadedPrimary ? 1 : -1;
@@ -1204,7 +1264,7 @@ export function generateSmartTimetable(
     if (!teacherId) return true;
     if (isTeacherSlotBusyFor(teacherId, subjectId, destDay, destPeriod, room)) return false;
     const t = teacherMap.get(teacherId);
-    if (t?.unavailableSlots?.some(u => u.day === destDay && u.periodIndex === destPeriod)) {
+    if (isTeacherBlockedAtSlot(t, destDay, destPeriod)) {
       return false;
     }
     const alreadyInPhysicalSlot = teacherSlotEntries.has(`${teacherId}_${destDay}_${destPeriod}`);
@@ -1308,6 +1368,9 @@ export function generateSmartTimetable(
     // Strategy 1: Move blockerEntry to an empty slot in otherSecCtx
     if (otherSecCtx.availableSlots.length > 0) {
       const moveTargetIdx = otherSecCtx.availableSlots.findIndex(destSlot => {
+        if (!isPeriodAllowedForSubject(blockerEntry.classId, blockerEntry.sectionId, blockerEntry.subjectId, destSlot.periodIndex)) {
+          return false;
+        }
         if (wouldViolateSubjectDailyLimit(otherSecCtx, blockerEntry.subjectId, destSlot.day, blockerEntry.day)) {
           return false;
         }
@@ -1361,6 +1424,12 @@ export function generateSmartTimetable(
 
     // Pass 2A: Direct 1-swap inside otherSecCtx (no recursion needed)
     for (const peerEntry of peerEntries) {
+      if (!isPeriodAllowedForSubject(blockerEntry.classId, blockerEntry.sectionId, blockerEntry.subjectId, peerEntry.periodIndex)) {
+        continue;
+      }
+      if (!isPeriodAllowedForSubject(peerEntry.classId, peerEntry.sectionId, peerEntry.subjectId, blockerEntry.periodIndex)) {
+        continue;
+      }
       if (wouldViolateSubjectDailyLimit(otherSecCtx, blockerEntry.subjectId, peerEntry.day, blockerEntry.day)) {
         continue;
       }
@@ -1431,6 +1500,12 @@ export function generateSmartTimetable(
 
       for (const peerEntry of peerEntries) {
         if (!peerEntry.teacherId) continue;
+        if (!isPeriodAllowedForSubject(blockerEntry.classId, blockerEntry.sectionId, blockerEntry.subjectId, peerEntry.periodIndex)) {
+          continue;
+        }
+        if (!isPeriodAllowedForSubject(peerEntry.classId, peerEntry.sectionId, peerEntry.subjectId, bPeriod)) {
+          continue;
+        }
         if (wouldViolateSubjectDailyLimit(otherSecCtx, blockerEntry.subjectId, peerEntry.day, bDay)) {
           continue;
         }
@@ -1477,7 +1552,7 @@ export function generateSmartTimetable(
 
         const peerTeacher = teacherMap.get(peerEntry.teacherId);
         if (!peerTeacher) continue;
-        if (peerTeacher.unavailableSlots?.some(u => u.day === bDay && u.periodIndex === bPeriod)) {
+        if (isTeacherBlockedAtSlot(peerTeacher, bDay, bPeriod)) {
           continue;
         }
         if (
@@ -1562,10 +1637,11 @@ export function generateSmartTimetable(
           continue;
         }
 
+        if (!isPeriodAllowedForPair(sectionCtx, pairItem, existingEntry.periodIndex)) continue;
         if (wouldViolatePairDailyLimit(sectionCtx, pairItem, existingEntry.day)) continue;
         if (isDedicatedRoomConflict(pairItem, existingEntry.day, existingEntry.periodIndex, classObj.id, sectionId, room)) continue;
 
-        if (t1.unavailableSlots?.some(u => u.day === existingEntry.day && u.periodIndex === existingEntry.periodIndex)) {
+        if (isTeacherBlockedAtSlot(t1, existingEntry.day, existingEntry.periodIndex)) {
           continue;
         }
         const t1AlreadyInPhysical = teacherSlotEntries.has(`${t1.id}_${existingEntry.day}_${existingEntry.periodIndex}`);
@@ -1607,9 +1683,7 @@ export function generateSmartTimetable(
               return false;
             }
             if (
-              c2.teacher.unavailableSlots?.some(
-                u => u.day === existingEntry.day && u.periodIndex === existingEntry.periodIndex
-              )
+              isTeacherBlockedAtSlot(c2.teacher, existingEntry.day, existingEntry.periodIndex)
             ) {
               return false;
             }
@@ -1626,6 +1700,9 @@ export function generateSmartTimetable(
 
         let swapSlotIdx = availableSlots.findIndex(slotB =>
           slotAList.every(se => {
+            if (!isPeriodAllowedForSubject(se.classId, se.sectionId, se.subjectId, slotB.periodIndex)) {
+              return false;
+            }
             if (wouldViolateSubjectDailyLimit(sectionCtx, se.subjectId, slotB.day, se.day)) {
               return false;
             }
@@ -1663,6 +1740,9 @@ export function generateSmartTimetable(
           if (existingTeacherObj) {
             for (let bIdx = 0; bIdx < availableSlots.length; bIdx++) {
               const slotB = availableSlots[bIdx];
+              if (!isPeriodAllowedForSubject(existingEntry.classId, existingEntry.sectionId, existingEntry.subjectId, slotB.periodIndex)) {
+                continue;
+              }
               if (wouldViolateSubjectDailyLimit(sectionCtx, existingEntry.subjectId, slotB.day, existingEntry.day)) {
                 continue;
               }
@@ -1678,11 +1758,7 @@ export function generateSmartTimetable(
               ) {
                 continue;
               }
-              if (
-                existingTeacherObj.unavailableSlots?.some(
-                  u => u.day === slotB.day && u.periodIndex === slotB.periodIndex
-                )
-              ) {
+              if (isTeacherBlockedAtSlot(existingTeacherObj, slotB.day, slotB.periodIndex)) {
                 continue;
               }
               if (
@@ -1811,6 +1887,7 @@ export function generateSmartTimetable(
         ) {
           continue;
         }
+        if (!isPeriodAllowedForPair(sectionCtx, pairItem, entryA.periodIndex)) continue;
         if (wouldViolatePairDailyLimit(sectionCtx, pairItem, entryA.day)) continue;
         if (isDedicatedRoomConflict(pairItem, entryA.day, entryA.periodIndex, classObj.id, sectionId, room)) continue;
         if (
@@ -1824,7 +1901,7 @@ export function generateSmartTimetable(
         ) {
           continue;
         }
-        if (t1.unavailableSlots?.some(u => u.day === entryA.day && u.periodIndex === entryA.periodIndex)) {
+        if (isTeacherBlockedAtSlot(t1, entryA.day, entryA.periodIndex)) {
           continue;
         }
         const t1AlreadyInPhys = teacherSlotEntries.has(`${t1.id}_${entryA.day}_${entryA.periodIndex}`);
@@ -1853,7 +1930,7 @@ export function generateSmartTimetable(
                 entryA.periodIndex,
                 resolveRoom(pairItem.partner!, room)
               ) &&
-              !c2.teacher.unavailableSlots?.some(u => u.day === entryA.day && u.periodIndex === entryA.periodIndex)
+              !isTeacherBlockedAtSlot(c2.teacher, entryA.day, entryA.periodIndex)
           );
           if (freePartners.length === 0) continue;
           freePartners.sort(
@@ -1868,6 +1945,7 @@ export function generateSmartTimetable(
           if (entryM.id === entryA.id) continue;
           if (entryM.subjectId === entryA.subjectId || isReligionSubject(entryM.subjectId, subjects)) continue;
 
+          if (!isPeriodAllowedForSubject(entryA.classId, entryA.sectionId, entryA.subjectId, entryM.periodIndex)) continue;
           if (wouldViolateSubjectDailyLimit(sectionCtx, entryA.subjectId, entryM.day, entryA.day)) continue;
           if (
             isSubjectDedicatedRoomConflict(
@@ -1896,6 +1974,9 @@ export function generateSmartTimetable(
           }
 
           let swapSlotIdx = availableSlots.findIndex(slotB => {
+            if (!isPeriodAllowedForSubject(entryM.classId, entryM.sectionId, entryM.subjectId, slotB.periodIndex)) {
+              return false;
+            }
             if (wouldViolateSubjectDailyLimit(sectionCtx, entryM.subjectId, slotB.day, entryM.day)) {
               return false;
             }
@@ -1931,6 +2012,7 @@ export function generateSmartTimetable(
               const periodMOrig = entryM.periodIndex;
               for (let bIdx = 0; bIdx < availableSlots.length; bIdx++) {
                 const slotB = availableSlots[bIdx];
+                if (!isPeriodAllowedForSubject(entryM.classId, entryM.sectionId, entryM.subjectId, slotB.periodIndex)) continue;
                 if (wouldViolateSubjectDailyLimit(sectionCtx, entryM.subjectId, slotB.day, dayMOrig)) continue;
                 if (
                   isSubjectDedicatedRoomConflict(
@@ -1944,7 +2026,7 @@ export function generateSmartTimetable(
                 ) {
                   continue;
                 }
-                if (mTeacher.unavailableSlots?.some(u => u.day === slotB.day && u.periodIndex === slotB.periodIndex)) continue;
+                if (isTeacherBlockedAtSlot(mTeacher, slotB.day, slotB.periodIndex)) continue;
                 if (
                   !allowRelaxedDaily &&
                   slotB.day !== dayMOrig &&
@@ -2114,9 +2196,10 @@ export function generateSmartTimetable(
 
       for (let sIdx = 0; sIdx < availableSlots.length; sIdx++) {
         const slot = availableSlots[sIdx];
+        if (!isPeriodAllowedForPair(sectionCtx, pairItem, slot.periodIndex)) continue;
         if (wouldViolatePairDailyLimit(sectionCtx, pairItem, slot.day)) continue;
         if (isDedicatedRoomConflict(pairItem, slot.day, slot.periodIndex, classObj.id, sectionId, room)) continue;
-        if (t1.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) {
+        if (isTeacherBlockedAtSlot(t1, slot.day, slot.periodIndex)) {
           continue;
         }
         const t1AlreadyInPhys = teacherSlotEntries.has(`${t1.id}_${slot.day}_${slot.periodIndex}`);
@@ -2159,7 +2242,7 @@ export function generateSmartTimetable(
               slot.periodIndex,
               resolveRoom(pairItem.partner!, room)
             ) &&
-            !c2.teacher.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)
+            !isTeacherBlockedAtSlot(c2.teacher, slot.day, slot.periodIndex)
         );
 
         if (t1Busy) {
@@ -2176,7 +2259,7 @@ export function generateSmartTimetable(
         } else {
           for (const c2 of allPartnerCands) {
             const t2 = c2.teacher;
-            if (t2.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) {
+            if (isTeacherBlockedAtSlot(t2, slot.day, slot.periodIndex)) {
               continue;
             }
             if (tryRelocateTeacherBlockerAtSlot(t2, slot.day, slot.periodIndex, allowRelaxedDaily)) {
@@ -2225,6 +2308,9 @@ export function generateSmartTimetable(
     for (let sIdx = 0; sIdx < availableSlots.length; sIdx++) {
       const slot = availableSlots[sIdx];
 
+      // Enforce Subject Fixed Period constraint
+      if (!isPeriodAllowedForPair(sectionCtx, pairItem, slot.periodIndex)) continue;
+
       // Strict Same-Day Subject Cap
       if (wouldViolatePairDailyLimit(sectionCtx, pairItem, slot.day)) continue;
 
@@ -2247,7 +2333,7 @@ export function generateSmartTimetable(
         ) {
           continue;
         }
-        if (t1.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) continue;
+        if (isTeacherBlockedAtSlot(t1, slot.day, slot.periodIndex)) continue;
 
         let chosenCand2: CandidateMatch | null = null;
         if (partner) {
@@ -2275,7 +2361,7 @@ export function generateSmartTimetable(
             ) {
               return false;
             }
-            if (t2.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) return false;
+            if (isTeacherBlockedAtSlot(t2, slot.day, slot.periodIndex)) return false;
             return true;
           });
 
@@ -2308,6 +2394,14 @@ export function generateSmartTimetable(
           score += 1800;
         } else {
           score -= secDayCount * 220;
+        }
+
+        // Preserve periods reserved by fixed-period subjects in this section when placing flexible subjects
+        if (!task.hasFixedPeriod) {
+          const rSet = sectionReservedFixedPeriods.get(`${classObj.id}_${sectionId}`);
+          if (rSet?.has(slot.periodIndex)) {
+            score -= 1200;
+          }
         }
 
         const involvesHindu =
@@ -2475,6 +2569,7 @@ export function generateSmartTimetable(
 
     for (let sIdx = 0; sIdx < availableSlots.length; sIdx++) {
       const slot = availableSlots[sIdx];
+      if (!isPeriodAllowedForPair(sectionCtx, pairItem, slot.periodIndex)) continue;
       if (wouldViolatePairDailyLimit(sectionCtx, pairItem, slot.day)) continue;
       if (isDedicatedRoomConflict(pairItem, slot.day, slot.periodIndex, classObj.id, sectionId, room)) continue;
 
@@ -2495,7 +2590,7 @@ export function generateSmartTimetable(
         const t1 = c1.teacher;
         const primaryRoom = resolveRoom(primary, room);
         if (isTeacherSlotBusyFor(t1.id, primary.subjectId, slot.day, slot.periodIndex, primaryRoom)) continue;
-        if (t1.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) continue;
+        if (isTeacherBlockedAtSlot(t1, slot.day, slot.periodIndex)) continue;
 
         if (
           existingHinduTeacherId &&
@@ -2534,7 +2629,7 @@ export function generateSmartTimetable(
             if (isTeacherSlotBusyFor(t2.id, partner.subjectId, slot.day, slot.periodIndex, partnerRoom)) {
               return false;
             }
-            if (t2.unavailableSlots?.some(u => u.day === slot.day && u.periodIndex === slot.periodIndex)) {
+            if (isTeacherBlockedAtSlot(t2, slot.day, slot.periodIndex)) {
               return false;
             }
             const t2InPhys = teacherSlotEntries.has(`${t2.id}_${slot.day}_${slot.periodIndex}`);
@@ -2591,6 +2686,13 @@ export function generateSmartTimetable(
 
         if (existingWaveCount === 0 && classObj.numericGrade >= 3 && slot.periodIndex > firstBreakIndex) {
           score += 350;
+        }
+
+        if (!task.hasFixedPeriod) {
+          const rSet = sectionReservedFixedPeriods.get(`${classObj.id}_${sectionId}`);
+          if (rSet?.has(slot.periodIndex)) {
+            score -= 1200;
+          }
         }
 
         score += ((slot.periodIndex + sectionIndex + orderIndex) % 7) * 0.01;
@@ -2673,12 +2775,12 @@ export function generateSmartTimetable(
   }
 
   // ===========================================================================
-  // PASS 2: Schedule Dedicated-Teacher KG-10 Tasks Strictly With Tier 1 & 2
+  // PASS 2: Schedule Fixed-Period & Dedicated-Teacher KG-10 Tasks First
   // ===========================================================================
   const remainingTasks: ScheduledItemTask[] = [];
   for (const task of kg10Tasks) {
-    if (task.hasDedicated) {
-      const status = assignTask(task, false);
+    if (task.hasFixedPeriod || task.hasDedicated) {
+      const status = assignTask(task, !task.hasDedicated);
       if (status !== 'assigned') {
         remainingTasks.push(task);
       }
@@ -2804,6 +2906,9 @@ export function generateSmartTimetable(
         const tWeekLoad = t ? teacherWeekLoad.get(t.id) || 0 : 0;
 
         for (const { s: targetSlot, idx: availIdx } of emptyDaySlotIndices) {
+          if (!isPeriodAllowedForSubject(donorEntry.classId, donorEntry.sectionId, donorEntry.subjectId, targetSlot.periodIndex)) {
+            continue;
+          }
           if (wouldViolateSubjectDailyLimit(secCtx, donorEntry.subjectId, targetSlot.day, donorEntry.day)) {
             continue;
           }
@@ -2831,7 +2936,7 @@ export function generateSmartTimetable(
             ) {
               continue;
             }
-            if (t?.unavailableSlots?.some(u => u.day === targetSlot.day && u.periodIndex === targetSlot.periodIndex)) {
+            if (isTeacherBlockedAtSlot(t, targetSlot.day, targetSlot.periodIndex)) {
               continue;
             }
             if (specialPacedTeacherIdSet.has(donorEntry.teacherId)) {
@@ -3086,6 +3191,10 @@ export function autoFixRoutine(
     if (!isPN && raw.teacherId && blockTeacherIdSet.has(raw.teacherId)) continue;
     if (isPN && raw.teacherId && !cls.blockTeacherIds?.includes(raw.teacherId)) continue;
 
+    // Drop entries violating fixed period restrictions so Auto Fix reschedules them in allowed periods
+    const allowedPeriods = getEffectiveSubjectFixedPeriods(cls, raw.sectionId, raw.subjectId, subjects);
+    if (allowedPeriods && !allowedPeriods.includes(raw.periodIndex)) continue;
+
     // Repair explicit teacher & room assignment if needed
     let fixedTeacherId = raw.teacherId;
     if (!isPN) {
@@ -3149,7 +3258,7 @@ export function autoFixRoutine(
     if (entry.teacherId) {
       const t = teacherMap.get(entry.teacherId);
       if (!t) continue;
-      if (t.unavailableSlots?.some(u => u.day === entry.day && u.periodIndex === entry.periodIndex)) continue;
+      if (isTeacherBlockedAtSlot(t, entry.day, entry.periodIndex)) continue;
 
       const tSlotKey = `${entry.teacherId}_${dpKey}`;
       const tExisting = keptTeacherSlot.get(tSlotKey) || [];

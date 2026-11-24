@@ -4,6 +4,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  ImageRun,
   Packer,
   Paragraph,
   ShadingType,
@@ -16,6 +17,7 @@ import {
 import { saveAs } from 'file-saver';
 import { ProxyPlanResult } from './proxyGenerator';
 import { SchoolSettings, Teacher } from '../types';
+import { loadSchoolLogoBytes, loadSchoolLogoDataUrl } from './logoAsset';
 
 const BORDER_STYLE = {
   style: BorderStyle.SINGLE,
@@ -31,10 +33,15 @@ const CELL_BORDERS = {
 };
 
 // 1. Export Proxy Routine in PDF
-export function exportProxyPdf(plan: ProxyPlanResult, settings: SchoolSettings, teachers: Teacher[]) {
+export async function exportProxyPdf(plan: ProxyPlanResult, settings: SchoolSettings, teachers: Teacher[]) {
+  const logoDataUrl = await loadSchoolLogoDataUrl();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, 'JPEG', 14, 8, 17, 17);
+  }
 
   // Header
   doc.setFont('helvetica', 'bold');
@@ -125,12 +132,33 @@ export function exportProxyPdf(plan: ProxyPlanResult, settings: SchoolSettings, 
 
 // 2. Export Proxy Routine in Word (.docx)
 export async function exportProxyDocx(plan: ProxyPlanResult, settings: SchoolSettings, teachers: Teacher[]) {
+  const logoBytes = await loadSchoolLogoBytes();
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const absentNames = plan.absentTeacherIds
     .map(id => teacherMap.get(id)?.name || id)
     .join(', ');
 
   const headerParagraphs: Paragraph[] = [
+    ...(logoBytes
+      ? [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 50 },
+            children: [
+              new ImageRun({
+                type: 'jpg',
+                data: logoBytes,
+                transformation: { width: 52, height: 52 },
+                altText: {
+                  name: 'SchoolLogo',
+                  description: 'Icon Dreams School & College Logo',
+                  title: 'Icon Dreams School & College Logo',
+                },
+              }),
+            ],
+          }),
+        ]
+      : []),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { after: 60 },

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { DayOfWeek, PeriodTiming, SchoolSettings, Subject, Teacher } from '../types';
-import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Lock, Plus, Trash2, Coffee, Sparkles } from 'lucide-react';
+import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Lock, Plus, Trash2, Coffee, SlidersHorizontal } from 'lucide-react';
 import { AppState, exportBackupJSON, importBackupJSON } from '../services/storage';
 import { isHinduReligionTeacher } from '../services/parallelSubjects';
 
@@ -485,8 +485,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
+                <div className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>Combined Religious Class Scheduling (ইসলাম ও হিন্দু ধর্ম সমন্বয়)</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">

@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { DayOfWeek, SchoolClass, Section, SectionSubjectConfig, Subject, SubjectRequirement, Teacher } from '../types';
+import {
+  DayOfWeek,
+  PeriodTiming,
+  SchoolClass,
+  Section,
+  SectionSubjectConfig,
+  Subject,
+  SubjectRequirement,
+  Teacher,
+} from '../types';
+import { INITIAL_SETTINGS } from '../data/initialData';
 import { X, Plus, Trash2, Check, BookOpen, Layers, Calendar, AlertTriangle, CheckSquare } from 'lucide-react';
 import { BENGALI_DAY_NAMES, getExtendedDayForSection, isSeventhPeriodDisabled } from '../services/scheduleTiers';
-import { getEffectiveSectionRequirements, isPlayOrNursery, isTeacherBlockTeacher } from '../services/parallelSubjects';
+import {
+  getEffectiveSectionRequirements,
+  getEffectiveSubjectFixedPeriods,
+  isPlayOrNursery,
+  isTeacherBlockTeacher,
+} from '../services/parallelSubjects';
 
 interface ClassManagementModalProps {
   isOpen: boolean;
@@ -10,6 +25,8 @@ interface ClassManagementModalProps {
   classes: SchoolClass[];
   subjects: Subject[];
   teachers: Teacher[];
+  workingDays?: DayOfWeek[];
+  periodTimings?: PeriodTiming[];
   onUpdateClasses: (updated: SchoolClass[]) => void;
   onUpdateSectionSubjects?: (
     classId: string,
@@ -21,7 +38,7 @@ interface ClassManagementModalProps {
     classId: string,
     sectionId: string,
     subjectId: string,
-    patch: { periodsPerWeek?: number; assignedTeacherId?: string }
+    patch: { periodsPerWeek?: number; assignedTeacherId?: string; fixedPeriodIndices?: number[] }
   ) => void;
   onOpenSubjectMgmt?: () => void;
 }
@@ -32,6 +49,8 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
   classes,
   subjects,
   teachers,
+  workingDays = INITIAL_SETTINGS.workingDays,
+  periodTimings = INITIAL_SETTINGS.periodTimings,
   onUpdateClasses,
   onUpdateSectionSubjects,
   onUpdateSectionSubjectConfig,
@@ -57,6 +76,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
   const [sectionNotice, setSectionNotice] = useState('');
   const [extraSubjectId, setExtraSubjectId] = useState('');
   const [extraPeriods, setExtraPeriods] = useState(4);
+  const teachingPeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
 
   if (!isOpen) return null;
 
@@ -132,6 +152,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
             newReqs.splice(existingIdx, 1);
           } else {
             newReqs[existingIdx] = {
+              ...newReqs[existingIdx],
               subjectId,
               periodsPerWeek,
               assignedTeacherId: assignedTeacherId || undefined,
@@ -826,6 +847,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                       const updateLocalSectionConfig = (patch: {
                         periodsPerWeek?: number;
                         assignedTeacherId?: string;
+                        fixedPeriodIndices?: number[];
                       }) => {
                         if (onUpdateSectionSubjectConfig) {
                           onUpdateSectionSubjectConfig(activeClass.id, activeSection.id, req.subjectId, patch);
@@ -838,6 +860,10 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                                 if (s.id !== activeSection.id) return s;
                                 const prev = s.subjectConfigs || {};
                                 const cur = prev[req.subjectId] || {};
+                                const nextFixed =
+                                  'fixedPeriodIndices' in patch
+                                    ? patch.fixedPeriodIndices
+                                    : cur.fixedPeriodIndices;
                                 return {
                                   ...s,
                                   subjectConfigs: {
@@ -851,6 +877,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                                         patch.assignedTeacherId !== undefined
                                           ? patch.assignedTeacherId
                                           : cur.assignedTeacherId,
+                                      ...(nextFixed !== undefined ? { fixedPeriodIndices: nextFixed } : {}),
                                     },
                                   },
                                 };
@@ -860,6 +887,31 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                           onUpdateClasses(updated);
                         }
                       };
+
+                      const effectiveFixed = getEffectiveSubjectFixedPeriods(
+                        activeClass,
+                        activeSection.id,
+                        req.subjectId,
+                        subjects
+                      );
+                      const hasParentDefault = Boolean(
+                        (req.fixedPeriodIndices !== undefined
+                          ? req.fixedPeriodIndices.length > 0
+                          : sub.fixedPeriodIndices && sub.fixedPeriodIndices.length > 0)
+                      );
+                      const toggleSecFixed = (pIdx: number) => {
+                        const cur = effectiveFixed || [];
+                        const next = cur.includes(pIdx)
+                          ? cur.filter(p => p !== pIdx)
+                          : [...cur, pIdx].sort((a, b) => a - b);
+                        updateLocalSectionConfig({
+                          fixedPeriodIndices: next.length > 0 ? next : hasParentDefault ? [] : undefined,
+                        });
+                      };
+                      const maxPossibleInFixed =
+                        effectiveFixed && effectiveFixed.length > 0
+                          ? effectiveFixed.length * workingDays.length
+                          : null;
 
                       return (
                         <div
@@ -903,28 +955,71 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                           </div>
 
                           {isChecked && (
-                            <select
-                              value={secTeacherId}
-                              onChange={e =>
-                                updateLocalSectionConfig({ assignedTeacherId: e.target.value })
-                              }
-                              className="w-full px-2 py-1 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                              title="শুধুমাত্র এই সেকশনের শিক্ষক"
-                            >
-                              <option value="">Any Qualified Teacher</option>
-                              {qualified.map(t => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name} ({t.initials})
-                                </option>
-                              ))}
-                              {nonBlockTeachers
-                                .filter(t => !qualified.some(q => q.id === t.id))
-                                .map(t => (
+                            <>
+                              <select
+                                value={secTeacherId}
+                                onChange={e =>
+                                  updateLocalSectionConfig({ assignedTeacherId: e.target.value })
+                                }
+                                className="w-full px-2 py-1 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                                title="শুধুমাত্র এই সেকশনের শিক্ষক"
+                              >
+                                <option value="">Any Qualified Teacher</option>
+                                {qualified.map(t => (
                                   <option key={t.id} value={t.id}>
-                                    {t.name} ({t.initials}) [Other]
+                                    {t.name} ({t.initials})
                                   </option>
                                 ))}
-                            </select>
+                                {nonBlockTeachers
+                                  .filter(t => !qualified.some(q => q.id === t.id))
+                                  .map(t => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name} ({t.initials}) [Other]
+                                    </option>
+                                  ))}
+                              </select>
+
+                              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                <span className="text-[10px] text-slate-500 mr-0.5">পিরিয়ড:</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateLocalSectionConfig({
+                                      fixedPeriodIndices: hasParentDefault ? [] : undefined,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border ${
+                                    !effectiveFixed || effectiveFixed.length === 0
+                                      ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900'
+                                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                  }`}
+                                >
+                                  যেকোনো
+                                </button>
+                                {teachingPeriods.map(tp => {
+                                  const isPinned = effectiveFixed?.includes(tp.periodIndex);
+                                  return (
+                                    <button
+                                      key={tp.periodIndex}
+                                      type="button"
+                                      onClick={() => toggleSecFixed(tp.periodIndex)}
+                                      className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border ${
+                                        isPinned
+                                          ? 'bg-blue-700 text-white border-blue-700'
+                                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                      }`}
+                                    >
+                                      P{tp.periodIndex}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {maxPossibleInFixed !== null && maxPossibleInFixed < secPeriods && (
+                                <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                                  সর্বোচ্চ {maxPossibleInFixed} ক্লাস সম্ভব ({secPeriods}টি চাই)
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       );

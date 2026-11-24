@@ -7,8 +7,10 @@ import {
   Teacher,
   TimetableEntry,
 } from '../types';
-import { Grid3X3, Users, BookOpen, Layers, Clock, TrendingUp, CalendarCheck } from 'lucide-react';
-import { isSlotDismissed } from '../services/scheduleTiers';
+import { Grid3X3, Users, BookOpen, Layers, Clock, TrendingUp, CalendarCheck, LayoutList } from 'lucide-react';
+import { useViewMode } from '../context/ViewModeContext';
+import { BENGALI_DAY_NAMES, isSlotDismissed } from '../services/scheduleTiers';
+import { resolveLiveSlotStatus } from '../services/livePeriodClock';
 import { isPlayOrNursery } from '../services/parallelSubjects';
 
 interface MasterTimetableViewProps {
@@ -32,15 +34,29 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
   onOpenEditSlot,
   readOnly = false,
 }) => {
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(workingDays[0] || 'Sunday');
+  const { isMobileView } = useViewMode();
+  const activePeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
+    const todayMap: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = todayMap[new Date().getDay()];
+    return workingDays.includes(today) ? today : workingDays[0] || 'Sunday';
+  });
   const [pivotMode, setPivotMode] = useState<'byClass' | 'byTeacher'>('byClass');
+  const [mobileMasterFormat, setMobileMasterFormat] = useState<'agenda' | 'grid'>('agenda');
+  const [selectedMobilePeriod, setSelectedMobilePeriod] = useState<number>(() => {
+    const snap = resolveLiveSlotStatus(periodTimings, workingDays, new Date());
+    const curIdx =
+      snap.currentWindow && !snap.currentWindow.period.isBreak && !snap.currentWindow.period.isLocked
+        ? snap.currentWindow.period.periodIndex
+        : null;
+    return curIdx ?? activePeriods[0]?.periodIndex ?? 1;
+  });
 
   const subjectMap = new Map(subjects.map(s => [s.id, s]));
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const classMap = new Map(classes.map(c => [c.id, c]));
 
   const allDisplayPeriods = periodTimings;
-  const activePeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
 
   // Flatten all class sections
   const allSections: { classObj: SchoolClass; sectionId: string; sectionName: string }[] = [];
@@ -86,192 +102,440 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
   // Active teachers with at least 1 assigned class
   const activeTeachersCount = new Set(entries.map(e => e.teacherId)).size;
 
+  const activeMobilePeriod =
+    activePeriods.find(p => p.periodIndex === selectedMobilePeriod) || activePeriods[0];
+
   return (
-    <div className="space-y-6">
-      {/* Dashboard Summary Card: Total Weekly Periods, Teacher Utilization %, and Remaining Unassigned Slots */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800/80">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <CalendarCheck className="w-4 h-4 text-blue-600" />
-              <span>School Schedule Overview</span>
+    <div className={isMobileView ? 'space-y-3.5' : 'space-y-6'}>
+      {isMobileView ? (
+        /* Compact Mobile 2-Col KPI Strip */
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-stone-900 dark:text-white flex items-center gap-1.5">
+              <CalendarCheck className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
+              <span>মাস্টার রুটিন ম্যাট্রিক্স</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live capacity and scheduling metrics across all {classes.length} classes and {teachers.length} faculty members.
-            </p>
+            <span className="text-[11px] font-mono text-stone-500 dark:text-slate-400 tabular-nums">
+              {allSections.length} শাখা · {workingDays.length} দিন
+            </span>
           </div>
-          <div className="text-xs text-slate-500 font-medium">
-            {allSections.length} sections · {workingDays.length} working days/week
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Card 1: Total Weekly Periods */}
-          <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Total Weekly Periods
-              </span>
-              <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
-                <Clock className="w-4 h-4" />
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="p-2.5 rounded-xl bg-[#f7f5f0] dark:bg-slate-800/50 border border-stone-200/70 dark:border-slate-800">
+              <div className="text-[10px] font-semibold text-stone-500 dark:text-slate-400">
+                নির্ধারিত পিরিয়ড
               </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums tracking-tight">
+              <div className="text-lg font-bold text-stone-900 dark:text-white font-mono tabular-nums mt-0.5">
                 {totalScheduledPeriods}
-              </div>
-              <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                <span>Curriculum target: <strong className="font-semibold text-slate-700 dark:text-slate-300">{totalRequiredPeriods}</strong></span>
+                <span className="text-xs font-normal text-stone-400"> / {totalRequiredPeriods}</span>
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
-              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <span>Target completion</span>
-                <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">
-                  {Math.round((totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%
-                </span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-blue-600 h-full rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, (totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* Card 2: Teacher Utilization Percentage */}
-          <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Teacher Utilization
-              </span>
-              <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
-                <TrendingUp className="w-4 h-4" />
+            <div className="p-2.5 rounded-xl bg-[#f7f5f0] dark:bg-slate-800/50 border border-stone-200/70 dark:border-slate-800">
+              <div className="text-[10px] font-semibold text-stone-500 dark:text-slate-400">
+                শিক্ষক ব্যবহার
               </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums tracking-tight">
+              <div className="text-lg font-bold text-[#145343] dark:text-emerald-400 font-mono tabular-nums mt-0.5">
                 {teacherUtilizationPct}%
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                <span><strong className="font-semibold text-slate-700 dark:text-slate-300">{activeTeachersCount} of {teachers.length}</strong> teachers deployed</span>
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
-              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <span>Faculty capacity load</span>
-                <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">
-                  {totalScheduledPeriods} / {totalTeacherCapacity} max
+                <span className="text-xs font-normal text-stone-500 dark:text-slate-400">
+                  {' '}· {activeTeachersCount}/{teachers.length}
                 </span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    teacherUtilizationPct > 90
-                      ? 'bg-amber-500'
-                      : teacherUtilizationPct > 60
-                      ? 'bg-purple-600'
-                      : 'bg-emerald-600'
-                  }`}
-                  style={{ width: `${Math.min(100, teacherUtilizationPct)}%` }}
-                />
               </div>
             </div>
           </div>
 
-          {/* Card 3: Remaining Unassigned Slots */}
-          <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Remaining Unassigned Slots
-              </span>
-              <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                <Layers className="w-4 h-4" />
-              </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-slate-400">
+              <span>কারিকুলাম সম্পন্ন: {Math.round((totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%</span>
+              <span className="font-mono tabular-nums">খালি: {remainingUnassignedSlots}</span>
             </div>
-            <div className="mt-3">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums tracking-tight">
-                {remainingUnassignedSlots}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                <span>Open period slots in timetable grid</span>
-              </div>
+            <div className="w-full bg-stone-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-[#145343] dark:bg-emerald-500 h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, (totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%`,
+                }}
+              />
             </div>
-            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
-              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <span>Available grid space</span>
-                <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">
-                  {Math.round((remainingUnassignedSlots / (totalPossibleSlots || 1)) * 100)}% free
+          </div>
+        </div>
+      ) : (
+        /* Desktop Summary Card: Total Weekly Periods, Teacher Utilization %, and Remaining Unassigned Slots */
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800/80">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <CalendarCheck className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
+                <span>School Schedule Overview</span>
+              </h2>
+              <p className="text-xs text-stone-500 dark:text-slate-400 mt-0.5">
+                Live capacity and scheduling metrics across all {classes.length} classes and {teachers.length} faculty members.
+              </p>
+            </div>
+            <div className="text-xs text-stone-500 dark:text-slate-400 font-medium">
+              {allSections.length} sections · {workingDays.length} working days/week
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Card 1: Total Weekly Periods */}
+            <div className="p-4 rounded-xl bg-[#f7f5f0] dark:bg-slate-800/40 border border-stone-200/80 dark:border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-slate-400">
+                  Total Weekly Periods
                 </span>
+                <div className="p-1.5 rounded-lg bg-[#eef5f2] dark:bg-emerald-950/60 text-[#145343] dark:text-emerald-300">
+                  <Clock className="w-4 h-4" />
+                </div>
               </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-amber-500 h-full rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, (remainingUnassignedSlots / (totalPossibleSlots || 1)) * 100)}%`,
-                  }}
-                />
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-stone-900 dark:text-white tabular-nums tracking-tight">
+                  {totalScheduledPeriods}
+                </div>
+                <div className="text-xs text-stone-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
+                  <span>Curriculum target: <strong className="font-semibold text-stone-700 dark:text-slate-300">{totalRequiredPeriods}</strong></span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-stone-200/60 dark:border-slate-700/50">
+                <div className="flex items-center justify-between text-[11px] text-stone-500 mb-1">
+                  <span>Target completion</span>
+                  <span className="font-semibold tabular-nums text-stone-700 dark:text-slate-300">
+                    {Math.round((totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full bg-stone-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-[#145343] dark:bg-emerald-500 h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, (totalScheduledPeriods / (totalRequiredPeriods || 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Teacher Utilization Percentage */}
+            <div className="p-4 rounded-xl bg-[#f7f5f0] dark:bg-slate-800/40 border border-stone-200/80 dark:border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-slate-400">
+                  Teacher Utilization
+                </span>
+                <div className="p-1.5 rounded-lg bg-teal-100/70 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums tracking-tight">
+                  {teacherUtilizationPct}%
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  <span><strong className="font-semibold text-slate-700 dark:text-slate-300">{activeTeachersCount} of {teachers.length}</strong> teachers deployed</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                  <span>Faculty capacity load</span>
+                  <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">
+                    {totalScheduledPeriods} / {totalTeacherCapacity} max
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      teacherUtilizationPct > 90
+                        ? 'bg-amber-500'
+                        : teacherUtilizationPct > 60
+                        ? 'bg-purple-600'
+                        : 'bg-emerald-600'
+                    }`}
+                    style={{ width: `${Math.min(100, teacherUtilizationPct)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Remaining Unassigned Slots */}
+            <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Remaining Unassigned Slots
+                </span>
+                <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                  <Layers className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums tracking-tight">
+                  {remainingUnassignedSlots}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  <span>Open period slots in timetable grid</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                  <span>Available grid space</span>
+                  <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">
+                    {Math.round((remainingUnassignedSlots / (totalPossibleSlots || 1)) * 100)}% free
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, (remainingUnassignedSlots / (totalPossibleSlots || 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Controls: Day Selector & Pivot Mode */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className={`bg-white dark:bg-slate-900 border border-stone-200 dark:border-slate-800 ${isMobileView ? 'rounded-2xl p-3 space-y-2.5' : 'rounded-xl p-4 shadow-xs'}`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Day Selector */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-2 shrink-0">
-              Select Day:
-            </span>
-            {workingDays.map(day => (
-              <button
-                key={day}
-                onClick={() => setSelectedDay(day)}
-                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                  selectedDay === day
-                    ? 'bg-blue-700 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {day}
-              </button>
-            ))}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+            {!isMobileView && (
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-2 shrink-0">
+                Select Day:
+              </span>
+            )}
+            {workingDays.map(day => {
+              const label = isMobileView
+                ? BENGALI_DAY_NAMES[day]?.replace('বার', '') || day.slice(0, 3)
+                : day;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => setSelectedDay(day)}
+                  className={`${
+                    isMobileView ? 'min-h-[36px] flex-1 px-2.5 py-1.5 rounded-xl' : 'px-3.5 py-1.5 rounded-lg'
+                  } text-xs font-semibold transition-colors whitespace-nowrap ${
+                    selectedDay === day
+                      ? 'bg-[#145343] text-white'
+                      : 'bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300 hover:bg-stone-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Pivot Toggle: By Class vs By Teacher */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700/80 shrink-0">
-            <button
-              onClick={() => setPivotMode('byClass')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                pivotMode === 'byClass'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>All Classes View</span>
-            </button>
-            <button
-              onClick={() => setPivotMode('byTeacher')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                pivotMode === 'byTeacher'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>All Teachers View</span>
-            </button>
+          {/* Pivot Toggle + Mobile Format Toggle */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-stone-100 dark:bg-slate-800 rounded-lg border border-stone-200 dark:border-slate-700/80 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPivotMode('byClass')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  pivotMode === 'byClass'
+                    ? 'bg-white dark:bg-slate-700 text-stone-900 dark:text-white shadow-2xs font-semibold'
+                    : 'text-stone-600 dark:text-slate-400 hover:text-stone-900'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>{isMobileView ? 'সকল ক্লাস' : 'All Classes View'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPivotMode('byTeacher')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  pivotMode === 'byTeacher'
+                    ? 'bg-white dark:bg-slate-700 text-stone-900 dark:text-white shadow-2xs font-semibold'
+                    : 'text-stone-600 dark:text-slate-400 hover:text-stone-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>{isMobileView ? 'সকল শিক্ষক' : 'All Teachers View'}</span>
+              </button>
+            </div>
+
+            {isMobileView && (
+              <div className="flex items-center p-0.5 bg-stone-100 dark:bg-slate-800 rounded-lg border border-stone-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setMobileMasterFormat('agenda')}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    mobileMasterFormat === 'agenda'
+                      ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                      : 'text-stone-500'
+                  }`}
+                  title="পিরিয়ড কার্ড"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileMasterFormat('grid')}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    mobileMasterFormat === 'grid'
+                      ? 'bg-white dark:bg-slate-700 text-[#145343] dark:text-emerald-300 shadow-2xs'
+                      : 'text-stone-500'
+                  }`}
+                  title="পূর্ণ গ্রিড"
+                >
+                  <Grid3X3 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Grid Display */}
+      {/* Mobile Period Explorer vs Desktop Grid Matrix */}
+      {isMobileView && mobileMasterFormat === 'agenda' ? (
+        <div className="space-y-3">
+          {/* Period Chips */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+              {activePeriods.map(p => {
+                const active = activeMobilePeriod?.periodIndex === p.periodIndex;
+                return (
+                  <button
+                    key={p.periodIndex}
+                    type="button"
+                    onClick={() => setSelectedMobilePeriod(p.periodIndex)}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+                      active
+                        ? 'bg-[#145343] text-white'
+                        : 'bg-[#f7f5f0] dark:bg-slate-800 text-stone-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeMobilePeriod && (
+              <div className="flex items-center justify-between text-xs text-stone-500 dark:text-slate-400 pt-1 border-t border-stone-100 dark:border-slate-800/80">
+                <span className="font-semibold text-stone-800 dark:text-slate-200">
+                  {BENGALI_DAY_NAMES[selectedDay] || selectedDay} · {activeMobilePeriod.label}
+                </span>
+                <span className="font-mono tabular-nums">
+                  {activeMobilePeriod.startTime} – {activeMobilePeriod.endTime}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Selected Period Cards */}
+          {activeMobilePeriod && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-stone-200 dark:border-slate-800 divide-y divide-stone-100 dark:divide-slate-800 overflow-hidden">
+              {pivotMode === 'byClass'
+                ? allSections.map(({ classObj, sectionId, sectionName }) => {
+                    const isDismissed = isSlotDismissed(
+                      classObj,
+                      selectedDay,
+                      activeMobilePeriod.periodIndex,
+                      sectionId,
+                      workingDays
+                    );
+                    const matches = entries.filter(
+                      e =>
+                        e.day === selectedDay &&
+                        e.classId === classObj.id &&
+                        e.sectionId === sectionId &&
+                        e.periodIndex === activeMobilePeriod.periodIndex
+                    );
+
+                    return (
+                      <div
+                        key={`${classObj.id}-${sectionId}`}
+                        onClick={() => {
+                          if (!readOnly && !isDismissed) {
+                            onOpenEditSlot(classObj.id, sectionId, selectedDay, activeMobilePeriod.periodIndex);
+                          }
+                        }}
+                        className={`px-3.5 py-3 flex items-center justify-between gap-3 ${
+                          !readOnly && !isDismissed ? 'cursor-pointer active:bg-stone-50 dark:active:bg-slate-800/60' : ''
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-[#145343] dark:text-emerald-400 truncate">
+                            {classObj.name} · {sectionName}
+                          </div>
+                          {isDismissed ? (
+                            <div className="text-xs text-stone-400 mt-0.5">ছুটি (Class Off)</div>
+                          ) : matches.length === 0 ? (
+                            <div className="text-xs text-stone-400 mt-0.5">
+                              {readOnly ? 'নির্ধারিত নেই' : '+ ক্লাস যোগ করুন'}
+                            </div>
+                          ) : (
+                            <div className="mt-0.5 space-y-0.5">
+                              {matches.map(m => {
+                                const sub = subjectMap.get(m.subjectId);
+                                const tch = teacherMap.get(m.teacherId);
+                                return (
+                                  <div key={m.id} className="flex items-center gap-1.5 text-sm font-bold text-stone-900 dark:text-white truncate">
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: sub?.color || '#145343' }}
+                                    />
+                                    <span className="truncate">{sub?.name || 'Class'}</span>
+                                    <span className="text-xs font-normal text-stone-500 dark:text-slate-400 shrink-0">
+                                      · {tch?.initials || tch?.name || '—'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                : teachers.map(teacher => {
+                    const match = entries.find(
+                      e =>
+                        e.day === selectedDay &&
+                        e.teacherId === teacher.id &&
+                        e.periodIndex === activeMobilePeriod.periodIndex
+                    );
+                    const cls = match ? classMap.get(match.classId) : null;
+                    const sec = cls?.sections.find(s => s.id === match?.sectionId);
+                    const sub = match ? subjectMap.get(match.subjectId) : null;
+
+                    return (
+                      <div
+                        key={teacher.id}
+                        onClick={() => {
+                          if (!readOnly && match) {
+                            onOpenEditSlot(match.classId, match.sectionId, selectedDay, activeMobilePeriod.periodIndex);
+                          }
+                        }}
+                        className={`px-3.5 py-3 flex items-center justify-between gap-3 ${
+                          !readOnly && match ? 'cursor-pointer active:bg-stone-50 dark:active:bg-slate-800/60' : ''
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                            {teacher.name}{' '}
+                            <span className="text-xs font-mono font-normal text-stone-400">
+                              ({teacher.initials})
+                            </span>
+                          </div>
+                          {match ? (
+                            <div className="text-xs text-[#145343] dark:text-emerald-400 font-medium truncate mt-0.5">
+                              {cls?.name} · {sec?.name} — {sub?.name}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-stone-400 mt-0.5">ফ্রি পিরিয়ড</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+            </div>
+          )}
+        </div>
+      ) : (
+      /* Grid Display */
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div>
@@ -520,6 +784,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 };

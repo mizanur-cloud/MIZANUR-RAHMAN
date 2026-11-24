@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { SchoolClass, Subject, Teacher, TeacherClassAssignment, TimetableEntry } from '../types';
+import {
+  DayOfWeek,
+  PeriodTiming,
+  SchoolClass,
+  Subject,
+  Teacher,
+  TeacherClassAssignment,
+  TimetableEntry,
+} from '../types';
+import { INITIAL_SETTINGS } from '../data/initialData';
+import { BENGALI_DAY_NAMES } from '../services/scheduleTiers';
+import { isTeacherBlockedAtSlot } from '../services/parallelSubjects';
 import {
   X,
   Plus,
@@ -13,7 +24,8 @@ import {
   Search,
   AlertTriangle,
   Clock,
-  Sparkles,
+  CheckCircle2,
+  Ban,
 } from 'lucide-react';
 
 interface TeacherManagementModalProps {
@@ -23,6 +35,8 @@ interface TeacherManagementModalProps {
   subjects: Subject[];
   classes: SchoolClass[];
   entries?: TimetableEntry[];
+  workingDays?: DayOfWeek[];
+  periodTimings?: PeriodTiming[];
   onUpdateTeachers: (updated: Teacher[]) => void;
   onUpdateClasses?: (updatedClasses: SchoolClass[]) => void;
   onDeleteTeacher?: (teacherId: string, removeAssignedEntries?: boolean) => void;
@@ -35,6 +49,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   subjects,
   classes,
   entries = [],
+  workingDays = INITIAL_SETTINGS.workingDays,
+  periodTimings = INITIAL_SETTINGS.periodTimings,
   onUpdateTeachers,
   onUpdateClasses,
   onDeleteTeacher,
@@ -60,11 +76,15 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   const [isBlockTeacher, setIsBlockTeacher] = useState<boolean>(false);
   const [isCoordinator, setIsCoordinator] = useState<boolean>(false);
   const [noProxy, setNoProxy] = useState<boolean>(false);
+  const [unavailablePeriods, setUnavailablePeriods] = useState<number[]>([]);
+  const [unavailableSlots, setUnavailableSlots] = useState<{ day: DayOfWeek; periodIndex: number }[]>([]);
 
   // New assignment picker states
   const [assignmentClassId, setAssignmentClassId] = useState<string>(classes[0]?.id || '');
   const [assignmentSectionId, setAssignmentSectionId] = useState<string>('all');
   const [assignmentSubjectId, setAssignmentSubjectId] = useState<string>(subjects[0]?.id || '');
+
+  const teachingPeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
 
   if (!isOpen) return null;
 
@@ -89,6 +109,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setIsBlockTeacher(Boolean(teacher.isBlockTeacher));
     setIsCoordinator(Boolean(teacher.isCoordinator));
     setNoProxy(Boolean(teacher.noProxy));
+    setUnavailablePeriods(teacher.unavailablePeriods ? [...teacher.unavailablePeriods] : []);
+    setUnavailableSlots(teacher.unavailableSlots ? teacher.unavailableSlots.map(s => ({ ...s })) : []);
   };
 
   const startAddNew = () => {
@@ -107,6 +129,26 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setIsBlockTeacher(false);
     setIsCoordinator(false);
     setNoProxy(false);
+    setUnavailablePeriods([]);
+    setUnavailableSlots([]);
+  };
+
+  const handleToggleUnavailablePeriod = (periodIndex: number) => {
+    setUnavailablePeriods(prev =>
+      prev.includes(periodIndex)
+        ? prev.filter(p => p !== periodIndex)
+        : [...prev, periodIndex].sort((a, b) => a - b)
+    );
+  };
+
+  const handleToggleUnavailableSlot = (day: DayOfWeek, periodIndex: number) => {
+    setUnavailableSlots(prev => {
+      const exists = prev.some(s => s.day === day && s.periodIndex === periodIndex);
+      if (exists) {
+        return prev.filter(s => !(s.day === day && s.periodIndex === periodIndex));
+      }
+      return [...prev, { day, periodIndex }];
+    });
   };
 
   const handleToggleSubject = (subId: string) => {
@@ -161,6 +203,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
 
     const effectiveNoProxy = noProxy || isBlockTeacher || isCoordinator;
 
+    const sortedUnavailablePeriods = Array.from(new Set(unavailablePeriods)).sort((a, b) => a - b);
+
     if (isAddingNew) {
       targetTeacher = {
         id: `tch-${Date.now().toString(36)}`,
@@ -176,6 +220,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
+        unavailablePeriods: sortedUnavailablePeriods.length > 0 ? sortedUnavailablePeriods : undefined,
+        unavailableSlots: unavailableSlots.length > 0 ? unavailableSlots : undefined,
       };
       onUpdateTeachers([...teachers, targetTeacher]);
       setSuccessNotice(`শিক্ষক "${targetTeacher.name}" সংরক্ষিত এবং নির্ধারিত ক্লাসে বিষয় স্বয়ংক্রিয়ভাবে যুক্ত করা হয়েছে!`);
@@ -193,6 +239,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
+        unavailablePeriods: sortedUnavailablePeriods.length > 0 ? sortedUnavailablePeriods : undefined,
+        unavailableSlots: unavailableSlots.length > 0 ? unavailableSlots : undefined,
       };
       const updated = teachers.map(t => (t.id === editingTeacher.id ? targetTeacher : t));
       onUpdateTeachers(updated);
@@ -400,6 +448,17 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                           {t.subjectIds.length > 2 && (
                             <span className="text-slate-400">+{t.subjectIds.length - 2}</span>
                           )}
+                          {((t.unavailablePeriods?.length || 0) > 0 || (t.unavailableSlots?.length || 0) > 0) && (
+                            <span
+                              className="px-1.5 py-0.2 bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 rounded font-semibold"
+                              title="এই শিক্ষকের কিছু পিরিয়ড/সময় বন্ধ নির্ধারিত রয়েছে"
+                            >
+                              বন্ধ:{' '}
+                              {(t.unavailablePeriods?.length || 0) > 0
+                                ? t.unavailablePeriods!.map(p => `P${p}`).join(',')
+                                : `${t.unavailableSlots!.length} স্লট`}
+                            </span>
+                          )}
                         </div>
 
                         <span
@@ -601,8 +660,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       এই শিক্ষক কোন কোন শ্রেণিতে ও সেকশনে কোন বিষয় পড়াবেন তা যুক্ত করুন:
                     </p>
-                    <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-lg text-[11px] text-blue-700 dark:text-blue-300">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1.5 bg-[#eef5f2] dark:bg-emerald-950/40 border border-[#bfd5cc] dark:border-emerald-800/80 rounded-lg text-[11px] text-[#145343] dark:text-emerald-300">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400 shrink-0" />
                       <span>
                         <strong>অটো-অ্যাড সিঙ্ক:</strong> এখানে ক্লাস ও বিষয় যুক্ত করলেই তা স্বয়ংক্রিয়ভাবে <strong>বিষয় ব্যবস্থাপনা (Subject Management)</strong>-এ ওই ক্লাসের রুটিন রিকোয়ারমেন্ট ও এই শিক্ষকের নামে যুক্ত হয়ে যাবে।
                       </span>
@@ -727,6 +786,147 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Teacher Blocked / Unavailable Periods Matrix */}
+                {(() => {
+                  const conflictingExistingCount = editingTeacher
+                    ? entries.filter(
+                        e =>
+                          e.teacherId === editingTeacher.id &&
+                          isTeacherBlockedAtSlot(
+                            { unavailablePeriods, unavailableSlots },
+                            e.day,
+                            e.periodIndex
+                          )
+                      ).length
+                    : 0;
+                  const hasAnyBlock = unavailablePeriods.length > 0 || unavailableSlots.length > 0;
+
+                  return (
+                    <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                            <Ban className="w-3.5 h-3.5 text-rose-600" />
+                            <span>অবসর / বন্ধ পিরিয়ড নির্ধারণ (Blocked / Off Periods)</span>
+                          </label>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            রুটিন তৈরির সময় এই শিক্ষকের যে পিরিয়ডে বা দিন-সময়ে কোনো ক্লাস রাখা যাবে না তা সিলেক্ট করুন।
+                          </p>
+                        </div>
+                        {hasAnyBlock && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUnavailablePeriods([]);
+                              setUnavailableSlots([]);
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md shrink-0"
+                          >
+                            সব উন্মুক্ত করুন (Clear All)
+                          </button>
+                        )}
+                      </div>
+
+                      {/* All-Days Period-Wide Toggle Bar */}
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mr-1">
+                          সকল দিনে নির্দিষ্ট পিরিয়ড বন্ধ:
+                        </span>
+                        {teachingPeriods.map(tp => {
+                          const isPeriodBlocked = unavailablePeriods.includes(tp.periodIndex);
+                          return (
+                            <button
+                              key={tp.periodIndex}
+                              type="button"
+                              onClick={() => handleToggleUnavailablePeriod(tp.periodIndex)}
+                              title={`${tp.label} (${tp.startTime} - ${tp.endTime}) সব দিনে ${
+                                isPeriodBlocked ? 'উন্মুক্ত করুন' : 'বন্ধ রাখুন'
+                              }`}
+                              className={`px-2 py-1 text-[11px] font-mono font-bold rounded border transition-colors ${
+                                isPeriodBlocked
+                                  ? 'bg-rose-600 text-white border-rose-600'
+                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-rose-400'
+                              }`}
+                            >
+                              P{tp.periodIndex} {isPeriodBlocked ? 'বন্ধ' : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Day x Period Matrix */}
+                      <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
+                        <table className="w-full text-[11px] border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                              <th className="py-1.5 px-2.5 text-left font-semibold">দিন / পিরিয়ড</th>
+                              {teachingPeriods.map(tp => (
+                                <th
+                                  key={tp.periodIndex}
+                                  className="py-1.5 px-1.5 text-center font-mono font-bold"
+                                  title={`${tp.label} (${tp.startTime} - ${tp.endTime})`}
+                                >
+                                  P{tp.periodIndex}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {workingDays.map(day => (
+                              <tr key={day}>
+                                <td className="py-1.5 px-2.5 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                                  {BENGALI_DAY_NAMES[day] || day}
+                                </td>
+                                {teachingPeriods.map(tp => {
+                                  const isWideBlocked = unavailablePeriods.includes(tp.periodIndex);
+                                  const isCellBlocked = unavailableSlots.some(
+                                    s => s.day === day && s.periodIndex === tp.periodIndex
+                                  );
+                                  const isBlocked = isWideBlocked || isCellBlocked;
+                                  return (
+                                    <td key={tp.periodIndex} className="p-1 text-center">
+                                      <button
+                                        type="button"
+                                        disabled={isWideBlocked}
+                                        onClick={() => handleToggleUnavailableSlot(day, tp.periodIndex)}
+                                        title={
+                                          isWideBlocked
+                                            ? `Period ${tp.periodIndex} উপরের বাটন থেকে সকল দিনে বন্ধ রয়েছে`
+                                            : isCellBlocked
+                                            ? `${BENGALI_DAY_NAMES[day]} P${tp.periodIndex} উন্মুক্ত করুন`
+                                            : `${BENGALI_DAY_NAMES[day]} P${tp.periodIndex} বন্ধ রাখুন`
+                                        }
+                                        className={`w-full py-1 px-1 rounded text-[10px] font-semibold border transition-colors ${
+                                          isWideBlocked
+                                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 cursor-not-allowed opacity-85'
+                                            : isCellBlocked
+                                            ? 'bg-rose-600 text-white border-rose-600'
+                                            : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-rose-400 hover:text-rose-600'
+                                        }`}
+                                      >
+                                        {isWideBlocked ? 'সব দিন' : isCellBlocked ? 'বন্ধ' : '—'}
+                                      </button>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {conflictingExistingCount > 0 && (
+                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <span>
+                            বর্তমান রুটিনে এই শিক্ষকের <strong>{conflictingExistingCount}টি</strong> ক্লাস উক্ত বন্ধ পিরিয়ডে রয়েছে। সংরক্ষণের পর রুটিন অটো-জেনারেট বা <strong>Auto Fix</strong> চালালে সেগুলো স্বয়ংক্রিয়ভাবে অন্য সময়ে সরিয়ে নেওয়া হবে।
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                   <div>

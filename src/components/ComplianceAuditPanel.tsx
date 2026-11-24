@@ -15,7 +15,7 @@ import {
   CheckCircle2,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
+  Wand2,
   Users,
   Layers,
   ClipboardCheck,
@@ -303,9 +303,9 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
             <button
               type="button"
               onClick={onOpenAutoGenerate}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg flex items-center gap-1.5 transition-colors"
+              className="px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center gap-1.5 transition-colors"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Wand2 className="w-3.5 h-3.5" />
               <span>Auto-Resolve & Regenerate</span>
             </button>
           </div>

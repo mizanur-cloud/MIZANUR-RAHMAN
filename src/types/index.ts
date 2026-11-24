@@ -19,6 +19,7 @@ export interface Subject {
   code: string;
   color: string;       // Hex or Tailwind color token for visually distinguishing subjects
   isElective?: boolean;
+  fixedPeriodIndices?: number[]; // Global default fixed/allowed period indices (e.g. [1] or [5, 6])
 }
 
 export interface TeacherClassAssignment {
@@ -39,6 +40,7 @@ export interface Teacher {
   maxConsecutivePeriods: number; // default 2
   maxDailyPeriods: number;       // default 4 or 5
   unavailableSlots?: { day: DayOfWeek; periodIndex: number }[];
+  unavailablePeriods?: number[]; // Period indices blocked across ALL working days (e.g. [1, 7])
   isBlockTeacher?: boolean;      // dedicated block teacher for Play / Nursery (no other classes or proxies)
   isCoordinator?: boolean;       // coordinator (no proxy classes allowed)
   noProxy?: boolean;             // explicitly exempted from proxy classes (e.g. Moazzem Sir)
@@ -47,6 +49,7 @@ export interface Teacher {
 export interface SectionSubjectConfig {
   periodsPerWeek?: number;
   assignedTeacherId?: string; // '' = explicitly unassigned ("Any"); string = section-specific teacher; undefined = unconfigured
+  fixedPeriodIndices?: number[]; // Section-specific fixed/allowed period indices ([] = explicitly any period)
 }
 
 export interface Section {
@@ -63,6 +66,7 @@ export interface SubjectRequirement {
   subjectId: string;
   periodsPerWeek: number;
   assignedTeacherId?: string; // default/template preferred teacher for this subject
+  fixedPeriodIndices?: number[]; // Class-level fixed/allowed period indices ([] = any period)
 }
 
 export interface SchoolClass {
@@ -116,6 +120,7 @@ export type ConflictType =
   | 'religion_rule_violation'
   | 'max_consecutive_exceeded'
   | 'teacher_unavailable'
+  | 'subject_fixed_period'
   | 'unselected_subject'
   | 'teacher_limit_exceeded';
 

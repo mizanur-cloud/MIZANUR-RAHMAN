@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SchoolClass } from '../types';
 import {
-  Sparkles,
+  Wand2,
   X,
   CheckCircle2,
   ShieldCheck,
@@ -71,8 +71,8 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-              <Sparkles className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300">
+              <Wand2 className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -571,9 +571,9 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                   type="button"
                   onClick={handleGenerate}
                   disabled={isProcessing}
-                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors flex items-center gap-2 shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-2 shadow-xs disabled:opacity-50"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Wand2 className="w-4 h-4" />
                   <span>{isProcessing ? 'Generating...' : 'Start Auto-Generation'}</span>
                 </button>
               </div>
