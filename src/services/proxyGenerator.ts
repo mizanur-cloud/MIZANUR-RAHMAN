@@ -1,10 +1,26 @@
-import { DayOfWeek, PeriodTiming, SchoolClass, Subject, Teacher, TimetableEntry } from '../types';
+import {
+  DayOfWeek,
+  PeriodTiming,
+  ProxyLogEntry,
+  SchoolClass,
+  Subject,
+  Teacher,
+  TimetableEntry,
+} from '../types';
+import {
+  AssignmentLimitEvaluation,
+  TeacherWorkloadSummary,
+  computeTeacherWorkload,
+  evaluateAssignmentLimits,
+  getLocalDateStr,
+} from './workloadService';
 
 export type ProxyMatchType = 'same_subject' | 'same_department' | 'free_teacher' | 'manual';
 
 export interface ProxyAssignment {
   id: string;
   originalEntryId: string;
+  date?: string;
   day: DayOfWeek;
   periodIndex: number;
   periodLabel: string;
@@ -24,15 +40,39 @@ export interface ProxyAssignment {
   matchReason: string;
   room?: string;
   status: 'assigned' | 'unassigned' | 'manual';
+  overriddenWarning?: string;
 }
 
 export interface ProxyPlanResult {
+  date?: string;
   day: DayOfWeek;
   absentTeacherIds: string[];
   totalAbsentClasses: number;
   assignedCount: number;
   unassignedCount: number;
   assignments: ProxyAssignment[];
+}
+
+export interface RankedProxyCandidate {
+  teacher: Teacher;
+  workload: TeacherWorkloadSummary;
+  limitEval: AssignmentLimitEvaluation;
+  isSameSubject: boolean;
+  isSameDepartment: boolean;
+  isRecommendedLowestLoad: boolean;
+  inlineLabel: string; // e.g., "Free | Load: 16/24 | Proxy: 1"
+}
+
+export interface BusyProxyCandidate {
+  teacher: Teacher;
+  workload: TeacherWorkloadSummary;
+  reason: string;
+  reasonCode: 'absent' | 'exempt' | 'regular_class' | 'existing_proxy' | 'blocked_slot';
+}
+
+export interface SlotProxyEvaluation {
+  freeCandidates: RankedProxyCandidate[];
+  busyCandidates: BusyProxyCandidate[];
 }
 
 // Department grouping for discipline-based proxy selection
@@ -50,6 +90,14 @@ function getDepartmentOfSubject(subjectId: string): string | null {
   return null;
 }
 
+function isTeacherBlockedAtDayPeriod(teacher: Teacher, day: DayOfWeek, periodIndex: number): boolean {
+  if (teacher.unavailablePeriods?.includes(periodIndex)) return true;
+  if (teacher.unavailableSlots?.some(s => s.day === day && s.periodIndex === periodIndex)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Checks if a teacher is eligible to be assigned a proxy class.
  * Institutional rules:
@@ -58,10 +106,8 @@ function getDepartmentOfSubject(subjectId: string): string | null {
  * 3. মোয়াজ্জেম স্যার (বা noProxy ফ্ল্যাগযুক্ত শিক্ষক) কে প্রক্সি ক্লাস দেওয়া যাবে না।
  */
 export function isEligibleForProxy(teacher: Teacher, classes?: SchoolClass[]): boolean {
-  // 1. Explicit noProxy flag
   if (teacher.noProxy) return false;
 
-  // 2. Moazzem Sir exclusion (both English & Bengali spellings)
   const lowerName = (teacher.name || '').toLowerCase();
   if (
     lowerName.includes('moazzem') ||
@@ -71,7 +117,6 @@ export function isEligibleForProxy(teacher: Teacher, classes?: SchoolClass[]): b
     return false;
   }
 
-  // 3. Coordinator restriction
   if (teacher.isCoordinator) return false;
   const desig = (teacher.designation || '').toLowerCase();
   if (
@@ -83,7 +128,6 @@ export function isEligibleForProxy(teacher: Teacher, classes?: SchoolClass[]): b
     return false;
   }
 
-  // 4. Block Teacher restriction (dedicated to Play / Nursery)
   if (teacher.isBlockTeacher) return false;
   if (classes) {
     const isPlayNurBlock = classes.some(
@@ -96,6 +140,189 @@ export function isEligibleForProxy(teacher: Teacher, classes?: SchoolClass[]): b
   return true;
 }
 
+/**
+ * Evaluates all teachers for a specific `(date, day, periodIndex)` slot,
+ * cleanly separating Available/Free teachers (ranked primarily by lowest total
+ * weekly load = Regular + Proxy) from Busy/Absent/Exempt teachers.
+ */
+export function evaluateProxyCandidatesForSlot(params: {
+  date: string;
+  day: DayOfWeek;
+  periodIndex: number;
+  subjectId: string;
+  absentTeacherIdsOnDate: string[];
+  allEntries: TimetableEntry[];
+  existingProxyLogs: ProxyLogEntry[];
+  teachers: Teacher[];
+  classes: SchoolClass[];
+  subjects: Subject[];
+  ignoreProxyLogId?: string;
+  pendingSameDatePeriods?: { teacherId: string; periodIndex: number }[];
+  sortMode?: 'lowest_load' | 'subject_first';
+}): SlotProxyEvaluation {
+  const {
+    date,
+    day,
+    periodIndex,
+    subjectId,
+    absentTeacherIdsOnDate,
+    allEntries,
+    existingProxyLogs,
+    teachers,
+    classes,
+    ignoreProxyLogId,
+    pendingSameDatePeriods = [],
+    sortMode = 'lowest_load',
+  } = params;
+
+  const subjectDept = getDepartmentOfSubject(subjectId);
+  const freeCandidates: RankedProxyCandidate[] = [];
+  const busyCandidates: BusyProxyCandidate[] = [];
+
+  for (const teacher of teachers) {
+    const workload = computeTeacherWorkload(teacher, allEntries, existingProxyLogs, {
+      targetDate: date,
+      targetDay: day,
+    });
+
+    if (absentTeacherIdsOnDate.includes(teacher.id)) {
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: 'অনুপস্থিত / ছুটিতে (Absent on Date)',
+        reasonCode: 'absent',
+      });
+      continue;
+    }
+
+    if (!isEligibleForProxy(teacher, classes)) {
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: teacher.isCoordinator
+          ? 'কো-অর্ডিনেটর (প্রক্সি মুক্ত)'
+          : teacher.isBlockTeacher
+          ? 'ব্লক টিচার (প্রক্সি মুক্ত)'
+          : 'প্রক্সি মুক্ত (Exempted)',
+        reasonCode: 'exempt',
+      });
+      continue;
+    }
+
+    if (isTeacherBlockedAtDayPeriod(teacher, day, periodIndex)) {
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: `${day} P${periodIndex} বন্ধ নির্ধারিত`,
+        reasonCode: 'blocked_slot',
+      });
+      continue;
+    }
+
+    const regularEntry = allEntries.find(
+      e => e.teacherId === teacher.id && e.day === day && e.periodIndex === periodIndex
+    );
+    if (regularEntry) {
+      const clsName = classes.find(c => c.id === regularEntry.classId)?.name || 'Class';
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: `নিয়মিত ক্লাস (${clsName})`,
+        reasonCode: 'regular_class',
+      });
+      continue;
+    }
+
+    const existingProxyAtSlot = existingProxyLogs.find(
+      p =>
+        p.status !== 'cancelled' &&
+        p.id !== ignoreProxyLogId &&
+        p.proxyTeacherId === teacher.id &&
+        p.date === date &&
+        p.periodIndex === periodIndex
+    );
+    const pendingProxyAtSlot = pendingSameDatePeriods.some(
+      p => p.teacherId === teacher.id && p.periodIndex === periodIndex
+    );
+    if (existingProxyAtSlot || pendingProxyAtSlot) {
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: existingProxyAtSlot
+          ? `অন্য প্রক্সি নির্ধারিত (${existingProxyAtSlot.className})`
+          : 'এই পিরিয়ডে প্রক্সি নির্ধারিত',
+        reasonCode: 'existing_proxy',
+      });
+      continue;
+    }
+
+    const limitEval = evaluateAssignmentLimits({
+      mode: 'proxy',
+      teacher,
+      day,
+      periodIndex,
+      date,
+      entries: allEntries,
+      proxyLogs: existingProxyLogs,
+      absentTeacherIdsOnDate,
+      ignoreProxyLogId,
+    });
+
+    const isSameSubject = teacher.subjectIds.includes(subjectId);
+    const isSameDepartment = Boolean(
+      subjectDept && teacher.subjectIds.some(sId => getDepartmentOfSubject(sId) === subjectDept)
+    );
+
+    freeCandidates.push({
+      teacher,
+      workload,
+      limitEval,
+      isSameSubject,
+      isSameDepartment,
+      isRecommendedLowestLoad: false,
+      inlineLabel: `Free | Load: ${workload.totalWeeklyLoad}/${workload.weeklyMax} | Proxy: ${workload.proxyWeeklyPeriods}`,
+    });
+  }
+
+  freeCandidates.sort((a, b) => {
+    const aOver = a.limitEval.hasOverloadWarning ? 1 : 0;
+    const bOver = b.limitEval.hasOverloadWarning ? 1 : 0;
+    if (aOver !== bOver) return aOver - bOver;
+
+    if (sortMode === 'subject_first') {
+      if (a.isSameSubject !== b.isSameSubject) return a.isSameSubject ? -1 : 1;
+      if (a.isSameDepartment !== b.isSameDepartment) return a.isSameDepartment ? -1 : 1;
+    }
+
+    if (a.workload.totalWeeklyLoad !== b.workload.totalWeeklyLoad) {
+      return a.workload.totalWeeklyLoad - b.workload.totalWeeklyLoad;
+    }
+
+    if (a.isSameSubject !== b.isSameSubject) return a.isSameSubject ? -1 : 1;
+    if (a.isSameDepartment !== b.isSameDepartment) return a.isSameDepartment ? -1 : 1;
+
+    if (a.workload.proxyWeeklyPeriods !== b.workload.proxyWeeklyPeriods) {
+      return a.workload.proxyWeeklyPeriods - b.workload.proxyWeeklyPeriods;
+    }
+
+    return a.workload.totalDailyLoad - b.workload.totalDailyLoad;
+  });
+
+  if (freeCandidates.length > 0) {
+    // Tag the lowest-load eligible (non-overloaded if available) candidate(s)
+    const nonOverPool = freeCandidates.filter(c => !c.limitEval.hasOverloadWarning);
+    const refPool = nonOverPool.length > 0 ? nonOverPool : freeCandidates;
+    const minWeeklyLoad = Math.min(...refPool.map(c => c.workload.totalWeeklyLoad));
+    for (const c of refPool) {
+      if (c.workload.totalWeeklyLoad === minWeeklyLoad) {
+        c.isRecommendedLowestLoad = true;
+      }
+    }
+  }
+
+  return { freeCandidates, busyCandidates };
+}
+
 export function generateDailyProxyPlan(
   day: DayOfWeek,
   absentTeacherIds: string[],
@@ -103,34 +330,26 @@ export function generateDailyProxyPlan(
   teachers: Teacher[],
   classes: SchoolClass[],
   subjects: Subject[],
-  periodTimings: PeriodTiming[]
+  periodTimings: PeriodTiming[],
+  options?: {
+    targetDate?: string;
+    proxyLogs?: ProxyLogEntry[];
+  }
 ): ProxyPlanResult {
+  const targetDate = options?.targetDate || getLocalDateStr();
+  const proxyLogs = options?.proxyLogs || [];
+
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const classMap = new Map(classes.map(c => [c.id, c]));
   const subjectMap = new Map(subjects.map(s => [s.id, s]));
   const periodMap = new Map(periodTimings.map(p => [p.periodIndex, p]));
 
-  // Find all scheduled classes for the absent teachers on this day
-  const affectedEntries = allEntries.filter(
-    e => e.day === day && absentTeacherIds.includes(e.teacherId)
-  ).sort((a, b) => a.periodIndex - b.periodIndex);
+  const affectedEntries = allEntries
+    .filter(e => e.day === day && absentTeacherIds.includes(e.teacherId))
+    .sort((a, b) => a.periodIndex - b.periodIndex);
 
-  // Available candidate teachers (not in absent list, and NOT Coordinators or Block Teachers)
-  const availableTeachers = teachers.filter(
-    t => !absentTeacherIds.includes(t.id) && isEligibleForProxy(t, classes)
-  );
-
-  // Track who is busy in which period on this day
-  // busyMap: "teacherId_periodIndex" -> entry
-  const busyMap = new Map<string, TimetableEntry>();
-  allEntries
-    .filter(e => e.day === day && !absentTeacherIds.includes(e.teacherId))
-    .forEach(e => {
-      busyMap.set(`${e.teacherId}_${e.periodIndex}`, e);
-    });
-
-  // Track how many proxy periods assigned to each teacher today
-  const assignedProxyCountToday = new Map<string, number>();
+  const pendingSameDatePeriods: { teacherId: string; periodIndex: number }[] = [];
+  const virtualLogs: ProxyLogEntry[] = [...proxyLogs];
 
   const assignments: ProxyAssignment[] = [];
   let assignedCount = 0;
@@ -142,79 +361,81 @@ export function generateDailyProxyPlan(
     const sec = cls?.sections.find(s => s.id === entry.sectionId);
     const sub = subjectMap.get(entry.subjectId);
     const absentTch = teacherMap.get(entry.teacherId);
-    const subjectDept = getDepartmentOfSubject(entry.subjectId);
 
-    // Filter teachers who are FREE during this exact period on this day
-    const freeTeachers = availableTeachers.filter(t => {
-      // Must not already have a regular class at this period
-      if (busyMap.has(`${t.id}_${entry.periodIndex}`)) return false;
-      // Must not already have a proxy assigned in this same period
-      if (assignments.some(a => a.substituteTeacherId === t.id && a.periodIndex === entry.periodIndex)) {
-        return false;
-      }
-      return true;
+    // Merged rule: preserve old priority (Same Subject -> Department Peer -> Free Teacher)
+    // while strictly checking same-date proxy clashes, absences, and weekly/daily limits
+    const { freeCandidates } = evaluateProxyCandidatesForSlot({
+      date: targetDate,
+      day,
+      periodIndex: entry.periodIndex,
+      subjectId: entry.subjectId,
+      absentTeacherIdsOnDate: absentTeacherIds,
+      allEntries,
+      existingProxyLogs: virtualLogs,
+      teachers,
+      classes,
+      subjects,
+      pendingSameDatePeriods,
+      sortMode: 'subject_first',
     });
 
-    let chosenTeacher: Teacher | null = null;
+    const nonOverloaded = freeCandidates.filter(c => !c.limitEval.hasOverloadWarning);
+    const pool = nonOverloaded.length > 0 ? nonOverloaded : freeCandidates;
+    const chosenCandidate = pool[0] || null;
+    const chosenTeacher = chosenCandidate?.teacher || null;
+
     let matchType: ProxyMatchType = 'free_teacher';
-    let matchReason = 'Free Period Stand-in';
+    let matchReason = 'Free Period Stand-in (Lowest Load)';
 
-    if (freeTeachers.length > 0) {
-      // Priority 1: Same Subject Specialist (একই বিষয়ের শিক্ষক)
-      const sameSubjectTeachers = freeTeachers.filter(t => t.subjectIds.includes(entry.subjectId));
-      if (sameSubjectTeachers.length > 0) {
-        // Pick the one with the fewest proxy classes so far
-        sameSubjectTeachers.sort((a, b) => {
-          const aCount = assignedProxyCountToday.get(a.id) || 0;
-          const bCount = assignedProxyCountToday.get(b.id) || 0;
-          return aCount - bCount;
-        });
-        chosenTeacher = sameSubjectTeachers[0];
+    if (chosenCandidate && chosenTeacher) {
+      if (chosenCandidate.isSameSubject) {
         matchType = 'same_subject';
-        matchReason = `Same Subject Specialist (${sub?.name || 'Subject'})`;
-      }
-
-      // Priority 2: Same Department / Discipline Colleague (একই বিভাগের শিক্ষক)
-      if (!chosenTeacher && subjectDept) {
-        const sameDeptTeachers = freeTeachers.filter(t =>
-          t.subjectIds.some(sId => getDepartmentOfSubject(sId) === subjectDept)
-        );
-        if (sameDeptTeachers.length > 0) {
-          sameDeptTeachers.sort((a, b) => {
-            const aCount = assignedProxyCountToday.get(a.id) || 0;
-            const bCount = assignedProxyCountToday.get(b.id) || 0;
-            return aCount - bCount;
-          });
-          chosenTeacher = sameDeptTeachers[0];
-          matchType = 'same_department';
-          const deptLabel = subjectDept.replace('_', ' ').toUpperCase();
-          matchReason = `Department Peer (${deptLabel})`;
-        }
-      }
-
-      // Priority 3: Any Available Free Teacher with lightest load
-      if (!chosenTeacher) {
-        freeTeachers.sort((a, b) => {
-          const aProxy = assignedProxyCountToday.get(a.id) || 0;
-          const bProxy = assignedProxyCountToday.get(b.id) || 0;
-          return aProxy - bProxy;
-        });
-        chosenTeacher = freeTeachers[0];
+        matchReason = `Same Subject (${sub?.name || 'Subject'}) · Load ${chosenCandidate.workload.totalWeeklyLoad}/${chosenCandidate.workload.weeklyMax}`;
+      } else if (chosenCandidate.isSameDepartment) {
+        matchType = 'same_department';
+        const dept = getDepartmentOfSubject(entry.subjectId) || 'dept';
+        matchReason = `Dept Peer (${dept.replace('_', ' ').toUpperCase()}) · Load ${chosenCandidate.workload.totalWeeklyLoad}/${chosenCandidate.workload.weeklyMax}`;
+      } else {
         matchType = 'free_teacher';
-        matchReason = 'Free Period Assignment';
+        matchReason = `Lowest Load (${chosenCandidate.workload.totalWeeklyLoad}/${chosenCandidate.workload.weeklyMax})`;
       }
-    }
 
-    if (chosenTeacher) {
       assignedCount++;
-      assignedProxyCountToday.set(
-        chosenTeacher.id,
-        (assignedProxyCountToday.get(chosenTeacher.id) || 0) + 1
-      );
+      pendingSameDatePeriods.push({
+        teacherId: chosenTeacher.id,
+        periodIndex: entry.periodIndex,
+      });
+
+      const assignmentId = `prx-${targetDate}-${entry.id}`;
+      virtualLogs.push({
+        id: assignmentId,
+        date: targetDate,
+        day,
+        periodIndex: entry.periodIndex,
+        periodLabel: period?.label || `Period ${entry.periodIndex}`,
+        periodTime: `${period?.startTime || ''} - ${period?.endTime || ''}`,
+        classId: entry.classId,
+        className: cls?.name || 'Class',
+        sectionId: entry.sectionId,
+        sectionName: sec?.name || 'Section',
+        subjectId: entry.subjectId,
+        subjectName: sub?.name || 'Subject',
+        absentTeacherId: entry.teacherId,
+        absentTeacherName: absentTch?.name || 'Absent Teacher',
+        proxyTeacherId: chosenTeacher.id,
+        proxyTeacherName: chosenTeacher.name,
+        assignedByEmail: 'auto@system.local',
+        assignedByName: 'Auto Matcher',
+        assignedByRole: 'admin',
+        status: 'assigned',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
 
       assignments.push({
-        id: `prx-${entry.id}-${chosenTeacher.id}`,
+        id: assignmentId,
         originalEntryId: entry.id,
+        date: targetDate,
         day,
         periodIndex: entry.periodIndex,
         periodLabel: period?.label || `Period ${entry.periodIndex}`,
@@ -238,8 +459,9 @@ export function generateDailyProxyPlan(
     } else {
       unassignedCount++;
       assignments.push({
-        id: `prx-unassigned-${entry.id}`,
+        id: `prx-unassigned-${targetDate}-${entry.id}`,
         originalEntryId: entry.id,
+        date: targetDate,
         day,
         periodIndex: entry.periodIndex,
         periodLabel: period?.label || `Period ${entry.periodIndex}`,
@@ -256,7 +478,7 @@ export function generateDailyProxyPlan(
         substituteTeacherId: '',
         substituteTeacherName: 'No Free Teacher Available',
         matchType: 'free_teacher',
-        matchReason: 'All eligible teachers busy during this period',
+        matchReason: 'All eligible teachers busy or absent during this period',
         room: entry.room || sec?.roomNumber,
         status: 'unassigned',
       });
@@ -264,6 +486,7 @@ export function generateDailyProxyPlan(
   }
 
   return {
+    date: targetDate,
     day,
     absentTeacherIds,
     totalAbsentClasses: affectedEntries.length,

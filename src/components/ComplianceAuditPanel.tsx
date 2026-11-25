@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
+  ProxyLogEntry,
   RoutineConflict,
   SchoolClass,
   SchoolSettings,
@@ -9,6 +10,7 @@ import {
   Teacher,
   TimetableEntry,
 } from '../types';
+import { computeTeacherWorkload, getTeacherDailyMax } from '../services/workloadService';
 import {
   AlertTriangle,
   ArrowRight,
@@ -41,12 +43,14 @@ interface ComplianceAuditPanelProps {
   teachers: Teacher[];
   subjects: Subject[];
   entries: TimetableEntry[];
+  proxyLogs?: ProxyLogEntry[];
   conflicts: RoutineConflict[];
   workingDays: DayOfWeek[];
   periodTimings: PeriodTiming[];
   settings?: SchoolSettings;
   onOpenAutoGenerate: () => void;
   onAutoFixRoutine?: () => GenerationResult | void;
+  onUpdateTeachers?: (updated: Teacher[]) => void;
   onSelectTeacher: (teacherId: string) => void;
   onSelectClassSection: (classId: string, sectionId: string) => void;
 }
@@ -56,16 +60,19 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
   teachers,
   subjects,
   entries,
+  proxyLogs = [],
   conflicts,
   workingDays,
   periodTimings,
   settings,
   onOpenAutoGenerate,
   onAutoFixRoutine,
+  onUpdateTeachers,
   onSelectTeacher,
   onSelectClassSection,
 }) => {
   const [auditTab, setAuditTab] = useState<'quota' | 'unassigned' | 'conflicts' | 'capacity'>('quota');
+  const [conflictTypeFilter, setConflictTypeFilter] = useState<'all' | 'teacher_limit_exceeded' | 'other'>('all');
   const [isFixing, setIsFixing] = useState(false);
 
   const verification = useMemo(
@@ -83,7 +90,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
     [entries, classes, teachers, subjects, workingDays, periodTimings, settings]
   );
 
-  // 1. Live Teacher Quota Audit (Aligned 100% with routineVerifier physical slot & section coverage accounting)
+  // 1. Live Teacher Quota & Combined Regular+Proxy Workload Audit
   const teacherAuditRows = useMemo(() => {
     const detailMap = new Map(verification.teacherDetails.map(d => [d.teacherId, d]));
 
@@ -96,19 +103,21 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
       const activeDays = vDetail?.activeDays ?? new Set(rawEntries.map(e => e.day)).size;
       const isHindu = isHinduReligionTeacher(teacher, subjects);
       const isAgr = isAgricultureTeacher(teacher, subjects);
+      const workload = computeTeacherWorkload(teacher, entries, proxyLogs, { workingDays });
 
       return {
         teacher,
         configuredTarget,
         scheduledCount: physicalSlots,
         sectionCoverage,
-        diff: physicalSlots - configuredTarget,
+        diff: sectionCoverage - configuredTarget,
         activeDays,
         isHindu,
         isAgr,
+        workload,
       };
     });
-  }, [teachers, entries, subjects, verification.teacherDetails]);
+  }, [teachers, entries, proxyLogs, workingDays, subjects, verification.teacherDetails]);
 
   // 2. Live Section Capacity Audit (Curriculum periods vs Open Timetable Slots)
   const sectionCapacityRows = useMemo(() => {
@@ -223,8 +232,6 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
         const hasHmt =
           isClassNineOrTen(cls) &&
           effReqs.some(r => isHigherMathSubject(r.subjectId, subjects));
-        const hasRel = effReqs.some(r => isIslamReligionSubject(r.subjectId, subjects));
-        const hasHin = effReqs.some(r => isHinduReligionSubject(r.subjectId, subjects));
 
         let mismatches = 0;
         effReqs.forEach(req => {
@@ -232,10 +239,6 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
           if (hasHmt && isAgricultureSubject(req.subjectId, subjects)) {
             const hmtReq = effReqs.find(r => isHigherMathSubject(r.subjectId, subjects));
             if (hmtReq) target = Math.max(target, hmtReq.periodsPerWeek);
-          }
-          if (hasRel && hasHin && isHinduReligionSubject(req.subjectId, subjects)) {
-            const relReq = effReqs.find(r => isIslamReligionSubject(r.subjectId, subjects));
-            if (relReq) target = Math.max(target, relReq.periodsPerWeek);
           }
           const actual = secEntries.filter(e => e.subjectId === req.subjectId).length;
           if (actual !== target) mismatches++;
@@ -248,6 +251,97 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
 
   const overSubscribedCount = sectionCapacityRows.filter(r => r.isOverSubscribed).length;
   const vStatus = verification.finalCompletionStatus;
+
+  const limitConflicts = useMemo(
+    () => conflicts.filter(c => c.type === 'teacher_limit_exceeded'),
+    [conflicts]
+  );
+
+  const filteredConflicts = useMemo(() => {
+    if (conflictTypeFilter === 'teacher_limit_exceeded') {
+      return limitConflicts;
+    }
+    if (conflictTypeFilter === 'other') {
+      return conflicts.filter(c => c.type !== 'teacher_limit_exceeded');
+    }
+    return conflicts;
+  }, [conflicts, limitConflicts, conflictTypeFilter]);
+
+  const dailyLimitDiagnostics = useMemo(() => {
+    const teacherDetailMap = new Map(verification.teacherDetails.map(d => [d.teacherId, d]));
+    const conflictCountByTeacher = new Map<string, number>();
+    limitConflicts.forEach(c => {
+      if (c.teacherId) {
+        conflictCountByTeacher.set(c.teacherId, (conflictCountByTeacher.get(c.teacherId) || 0) + 1);
+      }
+    });
+
+    return teachers
+      .filter(t => (conflictCountByTeacher.get(t.id) || 0) > 0)
+      .map(teacher => {
+        const maxDaily = getTeacherDailyMax(teacher);
+        const dayCounts = workingDays.map(day => {
+          const slots = new Set<number>();
+          entries.forEach(e => {
+            if (e.teacherId === teacher.id && e.day === day) {
+              slots.add(e.periodIndex);
+            }
+          });
+          return {
+            day,
+            shortDay: day.slice(0, 3),
+            count: slots.size,
+            exceeded: slots.size > maxDaily,
+          };
+        });
+        const weeklyPhysical = dayCounts.reduce((acc, d) => acc + d.count, 0);
+        const requiredPeriods = teacherDetailMap.get(teacher.id)?.requiredPeriods ?? 0;
+        const effectiveWeeklyTarget = Math.max(weeklyPhysical, requiredPeriods);
+        const weeklyCapFromDaily = maxDaily * Math.max(1, workingDays.length);
+        const isImpossibleLimit = effectiveWeeklyTarget > weeklyCapFromDaily;
+        const minRequiredDaily = Math.max(
+          maxDaily + 1,
+          Math.ceil(effectiveWeeklyTarget / Math.max(1, workingDays.length))
+        );
+        return {
+          teacher,
+          maxDaily,
+          dayCounts,
+          weeklyPhysical,
+          requiredPeriods,
+          weeklyCapFromDaily,
+          isImpossibleLimit,
+          minRequiredDaily,
+          violationCount: conflictCountByTeacher.get(teacher.id) || 0,
+        };
+      })
+      .sort((a, b) => b.violationCount - a.violationCount);
+  }, [teachers, entries, workingDays, limitConflicts, verification.teacherDetails]);
+
+  const handleOpenCheckTarget = (checkId: string) => {
+    if (checkId === 'fv-limits' || checkId === 'chk-teacher-limits') {
+      setAuditTab('conflicts');
+      setConflictTypeFilter('teacher_limit_exceeded');
+    } else if (checkId === 'fv-unassigned') {
+      setAuditTab('unassigned');
+    } else if (checkId === 'fv-workload' || checkId === 'chk-teacher-unassigned') {
+      setAuditTab('quota');
+    } else if (checkId === 'fv-quotas' || checkId === 'chk-subject-quota') {
+      setAuditTab(verification.unassignedClasses > 0 ? 'unassigned' : 'capacity');
+    } else {
+      setAuditTab('conflicts');
+      setConflictTypeFilter('all');
+    }
+  };
+
+  const handleRaiseTeacherDailyLimit = (teacher: Teacher, newLimit: number) => {
+    if (!onUpdateTeachers) return;
+    const clamped = Math.max(1, Math.min(10, newLimit));
+    const updated = teachers.map(t =>
+      t.id === teacher.id ? { ...t, maxDailyPeriods: clamped } : t
+    );
+    onUpdateTeachers(updated);
+  };
 
   return (
     <div className="space-y-6">
@@ -331,10 +425,12 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
             {verification.finalValidation.items.map(item => (
               <div
                 key={item.id}
-                className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1 ${
+                onClick={() => handleOpenCheckTarget(item.id)}
+                title="বিস্তারিত দেখতে ক্লিক করুন"
+                className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1 cursor-pointer transition-colors hover:shadow-2xs ${
                   item.status === 'PASS'
                     ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20'
-                    : 'border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/25'
+                    : 'border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/25 hover:bg-rose-50 dark:hover:bg-rose-950/40'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -425,12 +521,18 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
           </div>
         </div>
 
-        {/* Religion Scheduling Status + 7-Point Automatic Verification Checklist */}
+        {/* Religion Scheduling Status + 8-Point Automatic Verification Checklist */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 text-xs">
           {verification.checks.map(chk => (
             <div
               key={chk.id}
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-2"
+              onClick={() => handleOpenCheckTarget(chk.id)}
+              title="বিস্তারিত দেখতে ক্লিক করুন"
+              className={`px-3 py-2 rounded-lg border flex items-start justify-between gap-2 cursor-pointer transition-colors ${
+                chk.passed
+                  ? 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/70 dark:hover:bg-slate-800/50'
+                  : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50 dark:hover:bg-amber-950/35'
+              }`}
             >
               <div className="flex items-start gap-2 min-w-0">
                 {chk.passed ? (
@@ -628,16 +730,19 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
                 <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300">
                   <th className="py-2.5 px-4 font-semibold">Teacher</th>
                   <th className="py-2.5 px-4 font-semibold">Policy / Role</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Configured Target</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Scheduled Routine</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Active Days</th>
-                  <th className="py-2.5 px-4 font-semibold">Status</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Configured</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Regular</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Proxy (Wk)</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Total / Limit</th>
+                  <th className="py-2.5 px-4 font-semibold">Workload Status</th>
+                  <th className="py-2.5 px-4 font-semibold">Quota Match</th>
                   <th className="py-2.5 px-4 font-semibold text-right">Inspect</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
                 {teacherAuditRows.map(row => {
                   const isExactMatch = row.configuredTarget === 0 || row.diff === 0;
+                  const wl = row.workload;
                   return (
                     <tr
                       key={row.teacher.id}
@@ -675,14 +780,51 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400">
-                        {row.activeDays} / {workingDays.length}
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-blue-700 dark:text-blue-400">
+                        {wl.proxyWeeklyPeriods}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold">
+                        <span
+                          className={
+                            wl.status === 'Overloaded'
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : wl.status === 'Near Limit'
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-slate-900 dark:text-white'
+                          }
+                        >
+                          {wl.totalWeeklyLoad} / {wl.weeklyMax}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex flex-col items-start gap-1">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                              wl.status === 'Overloaded'
+                                ? 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                                : wl.status === 'Near Limit'
+                                ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                            }`}
+                          >
+                            {wl.status}
+                          </span>
+                          {wl.peakDailyLoad > wl.dailyMax && (
+                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                              দৈনিক সর্বোচ্চ: {wl.peakDailyLoad}/{wl.dailyMax}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2.5 px-4">
                         {isExactMatch ? (
                           <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Exact Match</span>
+                            <span>
+                              {row.sectionCoverage > row.scheduledCount
+                                ? `Exact (${row.sectionCoverage}/${row.configuredTarget})`
+                                : 'Exact Match'}
+                            </span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-semibold">
@@ -714,8 +856,161 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
 
       {/* Tab 2: Conflicts & Pacing List */}
       {auditTab === 'conflicts' && (
-        <>
-          {conflicts.length === 0 ? (
+        <div className="space-y-4">
+          {conflicts.length > 0 && (
+            <div className="flex items-center justify-between gap-2 flex-wrap bg-white dark:bg-slate-900 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setConflictTypeFilter('all')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                    conflictTypeFilter === 'all'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  All ({conflicts.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConflictTypeFilter('teacher_limit_exceeded')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                    conflictTypeFilter === 'teacher_limit_exceeded'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  Daily/Weekly Limits ({limitConflicts.length})
+                </button>
+                {conflicts.length > limitConflicts.length && (
+                  <button
+                    type="button"
+                    onClick={() => setConflictTypeFilter('other')}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                      conflictTypeFilter === 'other'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                    }`}
+                  >
+                    Other Conflicts ({conflicts.length - limitConflicts.length})
+                  </button>
+                )}
+              </div>
+              {dailyLimitDiagnostics.length > 0 && (
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                  মোট {dailyLimitDiagnostics.length} জন শিক্ষকের {limitConflicts.length}টি সীমা লঙ্ঘন পাওয়া গেছে
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Dedicated Daily/Weekly Teacher Limit Diagnostic Breakdown */}
+          {dailyLimitDiagnostics.length > 0 && conflictTypeFilter !== 'other' && (
+            <div className="bg-amber-50/70 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/70 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      দৈনিক ও সাপ্তাহিক পিরিয়ড সীমা বিশ্লেষণ ({limitConflicts.length}টি লঙ্ঘন · {dailyLimitDiagnostics.length} জন শিক্ষক)
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    নিচে প্রতিটি শিক্ষকের দিনভিত্তিক ক্লাস সংখ্যা, সীমা অতিক্রমের কারণ ও সরাসরি সমাধান দেওয়া হলো।
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {dailyLimitDiagnostics.map(diag => (
+                  <div
+                    key={diag.teacher.id}
+                    className="bg-white dark:bg-slate-900 rounded-lg border border-amber-200/80 dark:border-amber-900/60 p-3.5 space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">
+                          {diag.teacher.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          দৈনিক সীমা: {diag.maxDaily} পিরিয়ড/দিন · সপ্তাহে মোট: {diag.weeklyPhysical} ক্লাস
+                          {diag.requiredPeriods > 0 ? ` (নির্ধারিত ${diag.requiredPeriods})` : ''} · {diag.violationCount}টি সীমা লঙ্ঘন
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onSelectTeacher(diag.teacher.id)}
+                        className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline shrink-0 inline-flex items-center gap-1"
+                      >
+                        <span>রুটিন দেখুন</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Per-Day Breakdown Badges */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {diag.dayCounts.map(dc => (
+                        <span
+                          key={dc.day}
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            dc.exceeded
+                              ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:border-rose-800'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                          }`}
+                        >
+                          {dc.shortDay}: {dc.count}/{diag.maxDaily}
+                          {dc.exceeded ? ' !' : ''}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Diagnosis & One-Click Action */}
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-2 rounded-md">
+                      {diag.isImpossibleLimit ? (
+                        <>
+                          <strong>কারণ:</strong> সপ্তাহে নির্ধারিত/বরাদ্দ ক্লাস ({Math.max(diag.weeklyPhysical, diag.requiredPeriods)}টি) বর্তমান দৈনিক সীমা অনুযায়ী সর্বোচ্চ ক্ষমতার ({diag.maxDaily} × {workingDays.length} দিন = {diag.weeklyCapFromDaily}টি) চেয়ে বেশি। তাই দৈনিক সীমা কমপক্ষে <strong>{diag.minRequiredDaily}</strong> করতে হবে অথবা কিছু ক্লাস অন্য শিক্ষকের নামে দিতে হবে।
+                        </>
+                      ) : (
+                        <>
+                          <strong>কারণ:</strong> সপ্তাহে মোট ক্লাস ({diag.weeklyPhysical}টি) সর্বোচ্চ ক্ষমতার ({diag.weeklyCapFromDaily}টি) মধ্যে থাকলেও নির্দিষ্ট দিনে {diag.maxDaily}-এর বেশি ক্লাস জমে গেছে। অটো-ফিক্স করলে ক্লাসগুলো কম চাপের দিনে সমানভাবে সরে যাবে।
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {diag.isImpossibleLimit && onUpdateTeachers && (
+                        <button
+                          type="button"
+                          onClick={() => handleRaiseTeacherDailyLimit(diag.teacher, diag.minRequiredDaily)}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+                        >
+                          দৈনিক সীমা {diag.minRequiredDaily} পিরিয়ড করুন
+                        </button>
+                      )}
+                      {!diag.isImpossibleLimit && onAutoFixRoutine && (
+                        <button
+                          type="button"
+                          disabled={isFixing}
+                          onClick={() => {
+                            setIsFixing(true);
+                            setTimeout(() => {
+                              onAutoFixRoutine();
+                              setIsFixing(false);
+                            }, 50);
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-700 hover:bg-emerald-800 text-white transition-colors disabled:opacity-60"
+                        >
+                          {isFixing ? 'Rebalancing...' : 'Auto Fix / Rebalance করুন'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredConflicts.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-12 text-center">
               <ShieldCheck className="w-11 h-11 text-emerald-600 mx-auto mb-3" />
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -727,7 +1022,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {conflicts.map(conf => (
+              {filteredConflicts.map(conf => (
                 <div
                   key={conf.id}
                   className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-4"
@@ -787,7 +1082,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
               ))}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Tab 3: Section Capacity Audit */}

@@ -1,5 +1,5 @@
 import { INITIAL_CLASSES, INITIAL_SETTINGS, INITIAL_SUBJECTS, INITIAL_TEACHERS, INITIAL_TIMETABLE_ENTRIES } from '../data/initialData';
-import { SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
+import { DailyAbsenceRecord, ProxyLogEntry, SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
 import { syncTeacherAssignmentsToClasses } from './teacherSubjectSync';
 import { isPlayOrNursery } from './parallelSubjects';
 
@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   SUBJECTS: 'school_routine_subjects_v1',
   SETTINGS: 'school_routine_settings_v1',
   ENTRIES: 'school_routine_entries_v1',
+  PROXY_LOGS: 'school_routine_proxy_logs_v1',
+  DAILY_ABSENCES: 'school_routine_daily_absences_v1',
   POLICY_V2: 'school_routine_policy_v2_migrated',
   POLICY_V3: 'school_routine_policy_v3_migrated',
 };
@@ -351,4 +353,38 @@ export function importBackupJSON(jsonStr: string): AppState {
   };
   saveStoredData(normalizedState);
   return normalizedState;
+}
+
+export function loadStoredProxyLogs(): ProxyLogEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROXY_LOGS);
+    return raw ? (JSON.parse(raw) as ProxyLogEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredProxyLogs(logs: ProxyLogEntry[]) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.PROXY_LOGS, JSON.stringify(logs));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadStoredDailyAbsences(): Record<string, DailyAbsenceRecord> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DAILY_ABSENCES);
+    return raw ? (JSON.parse(raw) as Record<string, DailyAbsenceRecord>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveStoredDailyAbsences(map: Record<string, DailyAbsenceRecord>) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.DAILY_ABSENCES, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
 }

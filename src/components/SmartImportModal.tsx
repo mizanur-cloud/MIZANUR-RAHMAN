@@ -114,7 +114,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
           designation: t.designation || 'Teacher',
           subjectIds: [],
           maxConsecutivePeriods: 2,
-          maxDailyPeriods: 4,
+          maxDailyPeriods: 5,
         };
         newTeachers.push(newTch);
         teacherMap.set(t.name.toLowerCase(), newTch);

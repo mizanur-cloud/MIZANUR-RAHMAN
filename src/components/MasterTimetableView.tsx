@@ -88,9 +88,9 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
   const remainingUnassignedSlots = Math.max(0, totalPossibleSlots - totalScheduledPeriods);
 
   // Teacher utilization percentage:
-  // Each teacher has a standard weekly target capacity: (maxDailyPeriods || 4) * workingDays.length
+  // Each teacher has a standard weekly target capacity: (maxDailyPeriods || 5) * workingDays.length
   const totalTeacherCapacity = teachers.reduce((acc, t) => {
-    const dailyCap = t.maxDailyPeriods || 4;
+    const dailyCap = typeof t.maxDailyPeriods === 'number' && t.maxDailyPeriods > 0 ? t.maxDailyPeriods : 5;
     return acc + dailyCap * workingDays.length;
   }, 0);
 

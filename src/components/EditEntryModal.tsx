@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
+  ProxyLogEntry,
   SchoolClass,
   SchoolSettings,
   Subject,
@@ -10,6 +11,7 @@ import {
 } from '../types';
 import { X, Check, Trash2, AlertTriangle, MapPin, User, BookOpen, Plus } from 'lucide-react';
 import { isSlotDismissed, getTierBadgeInfo } from '../services/scheduleTiers';
+import { evaluateAssignmentLimits } from '../services/workloadService';
 import {
   AGRICULTURE_ROOM,
   findParallelPartnerSubjectId,
@@ -42,6 +44,7 @@ interface EditEntryModalProps {
   subjects: Subject[];
   periodTimings: PeriodTiming[];
   entries: TimetableEntry[];
+  proxyLogs?: ProxyLogEntry[];
   settings?: SchoolSettings;
   onSaveEntry: (entry: TimetableEntry, partnerEntry?: TimetableEntry) => void;
   onDeleteEntry: (entryId: string) => void;
@@ -59,6 +62,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   subjects,
   periodTimings,
   entries,
+  proxyLogs = [],
   settings,
   onSaveEntry,
   onDeleteEntry,
@@ -159,6 +163,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const [selectedPartnerTeacherId, setSelectedPartnerTeacherId] = useState<string>(() =>
     findDefaultPartnerTeacherId(selectedPartnerSubjectId)
   );
+  const [overrideConfirmed, setOverrideConfirmed] = useState<boolean>(false);
 
   useEffect(() => {
     if (existingEntry) {
@@ -202,6 +207,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       }
       setRoom(resolveSubjectRoom(selectedSubjectId));
     }
+    setOverrideConfirmed(false);
   }, [activeEntryId, classId, sectionId, day, periodIndex]);
 
   if (!isOpen) return null;
@@ -334,6 +340,21 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
     !isPlayNur && selectedTeacherObj && isTeacherBlockTeacher(selectedTeacherObj, classes)
   );
 
+  const teacherWorkloadEval = selectedTeacherObj
+    ? evaluateAssignmentLimits({
+        mode: 'regular',
+        teacher: selectedTeacherObj,
+        day,
+        periodIndex,
+        entries,
+        proxyLogs,
+        ignoreEntryId: existingEntry?.id,
+      })
+    : null;
+  const requiresWorkloadOverride = Boolean(
+    teacherWorkloadEval && teacherWorkloadEval.hasOverloadWarning && !blockTeacherViolation
+  );
+
   // Check max-1-per-day per subject & exact weekly quota limits (KG - Class 10)
   const selectedSubjectObj = subjects.find(s => s.id === selectedSubjectId);
   const selectedSubjectReq = effectiveReqs.find(r => r.subjectId === selectedSubjectId);
@@ -374,15 +395,9 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
     const hasHmt =
       isClassNineOrTen(currentClass) &&
       effectiveReqs.some(r => isHigherMathSubject(r.subjectId, subjects));
-    const hasRel = effectiveReqs.some(r => isIslamReligionSubject(r.subjectId, subjects));
-    const hasHin = effectiveReqs.some(r => isHinduReligionSubject(r.subjectId, subjects));
     if (hasHmt && isAgricultureSubject(selectedSubjectId, subjects)) {
       const hmtReq = effectiveReqs.find(r => isHigherMathSubject(r.subjectId, subjects));
       if (hmtReq) effectiveWeeklyLimit = Math.max(effectiveWeeklyLimit, hmtReq.periodsPerWeek);
-    }
-    if (hasRel && hasHin && isHinduReligionSubject(selectedSubjectId, subjects)) {
-      const relReq = effectiveReqs.find(r => isIslamReligionSubject(r.subjectId, subjects));
-      if (relReq) effectiveWeeklyLimit = Math.max(effectiveWeeklyLimit, relReq.periodsPerWeek);
     }
   }
 
@@ -421,7 +436,15 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSubjectId || !selectedTeacherId) return;
-    if (blockTeacherViolation || unselectedSubjectViolation || sameDaySubjectConflict || weeklyOverQuotaViolation) return;
+    if (
+      blockTeacherViolation ||
+      unselectedSubjectViolation ||
+      sameDaySubjectConflict ||
+      weeklyOverQuotaViolation ||
+      (requiresWorkloadOverride && !overrideConfirmed)
+    ) {
+      return;
+    }
 
     const entryToSave: TimetableEntry = {
       id: existingEntry?.id || `entry-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -696,6 +719,53 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Weekly + Daily + Consecutive Workload Warning & Override Confirmation */}
+            {teacherWorkloadEval && !blockTeacherViolation && teacherWorkloadEval.warnings.filter(w => w.code !== 'blocked_slot').length > 0 && (
+              <div
+                className={`mt-2 p-3 rounded-lg border space-y-2 ${
+                  teacherWorkloadEval.hasOverloadWarning
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/80'
+                    : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/80'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      teacherWorkloadEval.hasOverloadWarning ? 'text-rose-600' : 'text-amber-600'
+                    }`}
+                  />
+                  <div
+                    className={`text-xs space-y-1 ${
+                      teacherWorkloadEval.hasOverloadWarning
+                        ? 'text-rose-800 dark:text-rose-200'
+                        : 'text-amber-800 dark:text-amber-200'
+                    }`}
+                  >
+                    <div className="font-bold">
+                      সাপ্তাহিক লোড সতর্কতা ({teacherWorkloadEval.projectedWeekly}/{teacherWorkloadEval.weeklyMax} ক্লাস · নিয়মিত {teacherWorkloadEval.regularWeeklyPeriods} + প্রক্সি {teacherWorkloadEval.proxyWeeklyPeriods})
+                    </div>
+                    {teacherWorkloadEval.warnings
+                      .filter(w => w.code !== 'blocked_slot')
+                      .map((w, idx) => (
+                        <div key={idx}>• {w.message}</div>
+                      ))}
+                  </div>
+                </div>
+
+                {requiresWorkloadOverride && (
+                  <label className="flex items-start gap-2 pt-1.5 border-t border-rose-200/80 dark:border-rose-800/60 text-xs font-semibold text-rose-900 dark:text-rose-100 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={overrideConfirmed}
+                      onChange={e => setOverrideConfirmed(e.target.checked)}
+                      className="mt-0.5 rounded text-rose-600 focus:ring-rose-500"
+                    />
+                    <span>লিমিট অতিক্রম করার পরেও এডমিন ওভাররাইড হিসেবে সংরক্ষণ করতে সম্মত</span>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Auto-Pair Parallel Subject Panel (Class 9-10 HMT+AGR or KG-10 Islam+Hindu) */}
@@ -802,7 +872,13 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={blockTeacherViolation || unselectedSubjectViolation || sameDaySubjectConflict || weeklyOverQuotaViolation}
+                disabled={
+                  blockTeacherViolation ||
+                  unselectedSubjectViolation ||
+                  sameDaySubjectConflict ||
+                  weeklyOverQuotaViolation ||
+                  (requiresWorkloadOverride && !overrideConfirmed)
+                }
                 className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
               >
                 <Check className="w-4 h-4" />

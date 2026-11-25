@@ -141,6 +141,9 @@ service cloud.firestore {
           'teacher_update',
           'subject_update',
           'settings_update',
+          'proxy_assigned',
+          'proxy_updated',
+          'proxy_deleted',
           'admin_added',
           'admin_paused',
           'admin_blocked',
@@ -152,6 +155,69 @@ service cloud.firestore {
         && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100
         && data.actorRole in ['super_admin', 'admin']
         && data.timestamp is timestamp;
+    }
+
+    function isValidProxyLog(data) {
+      return data.keys().hasAll([
+          'id', 'date', 'day', 'periodIndex', 'periodLabel', 'periodTime',
+          'classId', 'className', 'sectionId', 'sectionName',
+          'subjectId', 'subjectName', 'absentTeacherId', 'absentTeacherName',
+          'proxyTeacherId', 'proxyTeacherName', 'assignedByEmail',
+          'assignedByName', 'assignedByRole', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'date', 'day', 'periodIndex', 'periodLabel', 'periodTime',
+          'classId', 'className', 'sectionId', 'sectionName',
+          'subjectId', 'subjectName', 'subjectColor',
+          'absentTeacherId', 'absentTeacherName',
+          'proxyTeacherId', 'proxyTeacherName',
+          'assignedByEmail', 'assignedByName', 'assignedByRole',
+          'status', 'room', 'matchType', 'matchReason', 'overriddenWarning',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        && data.periodIndex is int && data.periodIndex >= 1 && data.periodIndex <= 12
+        && data.periodLabel is string && data.periodLabel.size() >= 1 && data.periodLabel.size() <= 60
+        && data.periodTime is string && data.periodTime.size() <= 60
+        && data.classId is string && data.classId.size() >= 1 && data.classId.size() <= 100
+        && data.className is string && data.className.size() >= 1 && data.className.size() <= 100
+        && data.sectionId is string && data.sectionId.size() >= 1 && data.sectionId.size() <= 100
+        && data.sectionName is string && data.sectionName.size() >= 1 && data.sectionName.size() <= 100
+        && data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 100
+        && data.subjectName is string && data.subjectName.size() >= 1 && data.subjectName.size() <= 120
+        && (!('subjectColor' in data) || (data.subjectColor is string && data.subjectColor.size() <= 30))
+        && data.absentTeacherId is string && data.absentTeacherId.size() <= 100
+        && data.absentTeacherName is string && data.absentTeacherName.size() >= 1 && data.absentTeacherName.size() <= 120
+        && data.proxyTeacherId is string && data.proxyTeacherId.size() >= 1 && data.proxyTeacherId.size() <= 100
+        && data.proxyTeacherName is string && data.proxyTeacherName.size() >= 1 && data.proxyTeacherName.size() <= 120
+        && data.assignedByEmail is string && data.assignedByEmail.size() >= 3 && data.assignedByEmail.size() <= 160
+        && data.assignedByName is string && data.assignedByName.size() >= 1 && data.assignedByName.size() <= 100
+        && data.assignedByRole in ['super_admin', 'admin']
+        && data.status in ['assigned', 'completed', 'cancelled']
+        && (!('room' in data) || (data.room is string && data.room.size() <= 80))
+        && (!('matchType' in data) || data.matchType in ['same_subject', 'same_department', 'free_teacher', 'manual'])
+        && (!('matchReason' in data) || (data.matchReason is string && data.matchReason.size() <= 200))
+        && (!('overriddenWarning' in data) || (data.overriddenWarning is string && data.overriddenWarning.size() <= 400))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDailyAbsence(data) {
+      return data.keys().hasAll([
+          'id', 'date', 'day', 'absentTeacherIds', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.keys().hasOnly([
+          'id', 'date', 'day', 'absentTeacherIds', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && data.id is string && data.id.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.date == data.id
+        && data.day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        && data.absentTeacherIds is list && data.absentTeacherIds.size() <= 200
+        && data.updatedAt is timestamp
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100;
     }
 
     // 4. Collection Match Blocks
@@ -296,6 +362,67 @@ service cloud.firestore {
         && ((isSuperAdmin() && incoming().actorRole == 'super_admin')
           || (!isSuperAdmin() && incoming().actorRole == 'admin'));
       allow update, delete: if false;
+    }
+
+    // Protected Proxy Assignment Logs & Reports (Super Admin + Active Admin only)
+    match /proxy_logs/{logId} {
+      allow get: if isValidId(logId) && canEditRoutine();
+      allow list: if canEditRoutine();
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidProxyLog(incoming())
+        && incoming().id == logId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isVerifiedUser()
+        && incoming().assignedByEmail == currentEmail()
+        && canEditRoutine()
+        && ((isSuperAdmin() && incoming().assignedByRole == 'super_admin')
+          || (!isSuperAdmin() && incoming().assignedByRole == 'admin'));
+      allow update: if isSignedIn()
+        && isValidId(logId)
+        && isValidProxyLog(incoming())
+        && incoming().id == existing().id
+        && incoming().date == existing().date
+        && incoming().createdAt == existing().createdAt
+        && incoming().assignedByEmail == existing().assignedByEmail
+        && incoming().assignedByRole == existing().assignedByRole
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'proxyTeacherId', 'proxyTeacherName', 'status', 'matchType',
+          'matchReason', 'overriddenWarning', 'absentTeacherId', 'absentTeacherName',
+          'room', 'updatedAt'
+        ])
+        && isVerifiedUser()
+        && canEditRoutine();
+      allow delete: if isValidId(logId) && canEditRoutine();
+    }
+
+    // Protected Daily Absent Teacher Records (Super Admin + Active Admin only)
+    match /daily_absences/{dateId} {
+      allow get: if isValidId(dateId) && canEditRoutine();
+      allow list: if canEditRoutine();
+      allow create: if isSignedIn()
+        && isValidId(dateId)
+        && isValidDailyAbsence(incoming())
+        && incoming().id == dateId
+        && incoming().updatedAt == request.time
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow update: if isSignedIn()
+        && isValidId(dateId)
+        && isValidDailyAbsence(incoming())
+        && incoming().id == existing().id
+        && incoming().date == existing().date
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'day', 'absentTeacherIds', 'updatedAt', 'updatedByEmail', 'updatedByName'
+        ])
+        && isVerifiedUser()
+        && incoming().updatedByEmail == currentEmail()
+        && canEditRoutine();
+      allow delete: if isValidId(dateId) && canEditRoutine();
     }
 
     // Firestore connectivity check document

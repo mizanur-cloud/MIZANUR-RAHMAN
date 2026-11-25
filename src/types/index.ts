@@ -39,6 +39,7 @@ export interface Teacher {
   assignedClassSections?: TeacherClassAssignment[]; // classes & sections this teacher teaches
   maxConsecutivePeriods: number; // default 2
   maxDailyPeriods: number;       // default 4 or 5
+  maxWeeklyPeriods?: number;     // default 24 (Regular + Proxy combined weekly limit)
   unavailableSlots?: { day: DayOfWeek; periodIndex: number }[];
   unavailablePeriods?: number[]; // Period indices blocked across ALL working days (e.g. [1, 7])
   isBlockTeacher?: boolean;      // dedicated block teacher for Play / Nursery (no other classes or proxies)
@@ -138,6 +139,49 @@ export interface RoutineConflict {
   sectionId?: string;
 }
 
+// Proxy Assignment Logs & Daily Absent Tracking
+export type ProxyLogStatus = 'assigned' | 'completed' | 'cancelled';
+
+export interface ProxyLogEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  day: DayOfWeek;
+  periodIndex: number;
+  periodLabel: string;
+  periodTime: string;
+  classId: string;
+  className: string;
+  sectionId: string;
+  sectionName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectColor?: string;
+  absentTeacherId: string;
+  absentTeacherName: string;
+  proxyTeacherId: string;
+  proxyTeacherName: string;
+  assignedByEmail: string;
+  assignedByName: string;
+  assignedByRole: 'super_admin' | 'admin';
+  status: ProxyLogStatus;
+  room?: string;
+  matchType?: 'same_subject' | 'same_department' | 'free_teacher' | 'manual';
+  matchReason?: string;
+  overriddenWarning?: string;
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface DailyAbsenceRecord {
+  id: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
+  day: DayOfWeek;
+  absentTeacherIds: string[];
+  updatedAt: any;
+  updatedByEmail: string;
+  updatedByName: string;
+}
+
 // 3-Tier Role-Based Access Control (RBAC) & Audit Trail
 export type UserRole = 'super_admin' | 'admin' | 'viewer';
 export type AdminStatus = 'active' | 'paused' | 'blocked';
@@ -167,6 +211,9 @@ export type AuditActionType =
   | 'teacher_update'
   | 'subject_update'
   | 'settings_update'
+  | 'proxy_assigned'
+  | 'proxy_updated'
+  | 'proxy_deleted'
   | 'admin_added'
   | 'admin_paused'
   | 'admin_blocked'

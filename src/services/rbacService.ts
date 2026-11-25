@@ -16,6 +16,10 @@ import {
   AdminStatus,
   AuditActionType,
   AuditLogEntry,
+  DailyAbsenceRecord,
+  DayOfWeek,
+  ProxyLogEntry,
+  ProxyLogStatus,
   SchoolClass,
   SchoolSettings,
   Subject,
@@ -464,5 +468,217 @@ export async function getFreshIdToken(): Promise<string | null> {
     return await user.getIdToken();
   } catch {
     return null;
+  }
+}
+
+export function subscribeProxyLogs(
+  canAccess: boolean,
+  onLogs: (logs: ProxyLogEntry[]) => void
+): Unsubscribe {
+  if (!canAccess) {
+    onLogs([]);
+    return () => {};
+  }
+  const path = 'proxy_logs';
+  const q = query(collection(db, 'proxy_logs'), orderBy('date', 'desc'), limit(500));
+  return onSnapshot(
+    q,
+    snap => {
+      const list = snap.docs.map(d => d.data() as ProxyLogEntry);
+      onLogs(list);
+    },
+    err => {
+      try {
+        handleFirestoreError(err, OperationType.LIST, path);
+      } catch {
+        // Logged structured FirestoreErrorInfo
+      }
+    }
+  );
+}
+
+export async function saveProxyLogToCloud(params: {
+  log: ProxyLogEntry;
+  isNew: boolean;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+}): Promise<void> {
+  const { log, isNew, actorEmail, actorName, actorRole } = params;
+  const cleanEmail = actorEmail.trim().toLowerCase().slice(0, 160);
+  const cleanName = (actorName.trim() || cleanEmail).slice(0, 100);
+  const path = `proxy_logs/${log.id}`;
+
+  const basePayload = stripUndefined({
+    id: log.id.slice(0, 160),
+    date: log.date.slice(0, 10),
+    day: log.day,
+    periodIndex: Number(log.periodIndex),
+    periodLabel: (log.periodLabel || `Period ${log.periodIndex}`).slice(0, 60),
+    periodTime: (log.periodTime || '').slice(0, 60),
+    classId: log.classId.slice(0, 100),
+    className: log.className.slice(0, 100),
+    sectionId: log.sectionId.slice(0, 100),
+    sectionName: log.sectionName.slice(0, 100),
+    subjectId: log.subjectId.slice(0, 100),
+    subjectName: log.subjectName.slice(0, 120),
+    ...(log.subjectColor ? { subjectColor: log.subjectColor.slice(0, 30) } : {}),
+    absentTeacherId: log.absentTeacherId.slice(0, 100),
+    absentTeacherName: log.absentTeacherName.slice(0, 120),
+    proxyTeacherId: log.proxyTeacherId.slice(0, 100),
+    proxyTeacherName: log.proxyTeacherName.slice(0, 120),
+    assignedByEmail: (isNew ? cleanEmail : log.assignedByEmail || cleanEmail).slice(0, 160),
+    assignedByName: (isNew ? cleanName : log.assignedByName || cleanName).slice(0, 100),
+    assignedByRole: isNew ? actorRole : log.assignedByRole || actorRole,
+    status: log.status,
+    ...(log.room ? { room: log.room.slice(0, 80) } : {}),
+    ...(log.matchType ? { matchType: log.matchType } : {}),
+    ...(log.matchReason ? { matchReason: log.matchReason.slice(0, 200) } : {}),
+    ...(log.overriddenWarning ? { overriddenWarning: log.overriddenWarning.slice(0, 400) } : {}),
+  });
+
+  try {
+    if (isNew) {
+      await setDoc(doc(db, 'proxy_logs', log.id), {
+        ...basePayload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(
+        doc(db, 'proxy_logs', log.id),
+        stripUndefined({
+          proxyTeacherId: basePayload.proxyTeacherId,
+          proxyTeacherName: basePayload.proxyTeacherName,
+          status: basePayload.status,
+          matchType: basePayload.matchType,
+          matchReason: basePayload.matchReason,
+          overriddenWarning: basePayload.overriddenWarning,
+          absentTeacherId: basePayload.absentTeacherId,
+          absentTeacherName: basePayload.absentTeacherName,
+          room: basePayload.room,
+          updatedAt: serverTimestamp(),
+        })
+      );
+    }
+  } catch (err) {
+    handleFirestoreError(err, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
+  }
+
+  await recordAuditLog({
+    action: isNew ? 'proxy_assigned' : 'proxy_updated',
+    targetSummary: `প্রক্সি ${isNew ? 'বরাদ্দ' : 'আপডেট'} (${log.date}, P${log.periodIndex}): ${log.className} (${log.sectionName}) — ${log.absentTeacherName} → ${log.proxyTeacherName}${
+      log.overriddenWarning ? ` [Override: ${log.overriddenWarning.slice(0, 80)}]` : ''
+    }`,
+    actorEmail: cleanEmail,
+    actorName: cleanName,
+    actorRole,
+  });
+}
+
+export async function updateProxyLogStatusInCloud(params: {
+  logId: string;
+  status: ProxyLogStatus;
+  summary: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+}): Promise<void> {
+  const path = `proxy_logs/${params.logId}`;
+  try {
+    await updateDoc(doc(db, 'proxy_logs', params.logId), {
+      status: params.status,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+
+  await recordAuditLog({
+    action: 'proxy_updated',
+    targetSummary: params.summary,
+    actorEmail: params.actorEmail,
+    actorName: params.actorName,
+    actorRole: params.actorRole,
+  });
+}
+
+export async function deleteProxyLogFromCloud(params: {
+  logId: string;
+  summary: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+}): Promise<void> {
+  const path = `proxy_logs/${params.logId}`;
+  try {
+    await deleteDoc(doc(db, 'proxy_logs', params.logId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+
+  await recordAuditLog({
+    action: 'proxy_deleted',
+    targetSummary: params.summary,
+    actorEmail: params.actorEmail,
+    actorName: params.actorName,
+    actorRole: params.actorRole,
+  });
+}
+
+export function subscribeDailyAbsences(
+  canAccess: boolean,
+  onAbsences: (map: Record<string, DailyAbsenceRecord>) => void
+): Unsubscribe {
+  if (!canAccess) {
+    onAbsences({});
+    return () => {};
+  }
+  const path = 'daily_absences';
+  const q = query(collection(db, 'daily_absences'), orderBy('date', 'desc'), limit(120));
+  return onSnapshot(
+    q,
+    snap => {
+      const nextMap: Record<string, DailyAbsenceRecord> = {};
+      snap.docs.forEach(d => {
+        const rec = d.data() as DailyAbsenceRecord;
+        if (rec?.date) nextMap[rec.date] = rec;
+      });
+      onAbsences(nextMap);
+    },
+    err => {
+      try {
+        handleFirestoreError(err, OperationType.LIST, path);
+      } catch {
+        // Logged structured FirestoreErrorInfo
+      }
+    }
+  );
+}
+
+export async function saveDailyAbsenceToCloud(params: {
+  date: string;
+  day: DayOfWeek;
+  absentTeacherIds: string[];
+  actorEmail: string;
+  actorName: string;
+}): Promise<void> {
+  const cleanEmail = params.actorEmail.trim().toLowerCase().slice(0, 160);
+  const cleanName = (params.actorName.trim() || cleanEmail).slice(0, 100);
+  const dateId = params.date.slice(0, 10);
+  const path = `daily_absences/${dateId}`;
+
+  try {
+    await setDoc(doc(db, 'daily_absences', dateId), {
+      id: dateId,
+      date: dateId,
+      day: params.day,
+      absentTeacherIds: params.absentTeacherIds.slice(0, 200),
+      updatedAt: serverTimestamp(),
+      updatedByEmail: cleanEmail,
+      updatedByName: cleanName,
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }

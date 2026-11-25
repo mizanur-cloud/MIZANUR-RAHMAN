@@ -160,6 +160,9 @@
             "teacher_update",
             "subject_update",
             "settings_update",
+            "proxy_assigned",
+            "proxy_updated",
+            "proxy_deleted",
             "admin_added",
             "admin_paused",
             "admin_blocked",
@@ -193,6 +196,79 @@
       },
       "required": ["id", "action", "targetSummary", "actorEmail", "actorName", "actorRole", "timestamp"]
     },
+    "ProxyLogEntry": {
+      "title": "ProxyLogEntry",
+      "description": "Recorded proxy class assignment log entry accessible only to active admins and Super Admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "date": { "type": "string", "maxLength": 10 },
+        "day": { "type": "string", "enum": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] },
+        "periodIndex": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "periodLabel": { "type": "string", "maxLength": 60 },
+        "periodTime": { "type": "string", "maxLength": 60 },
+        "classId": { "type": "string", "maxLength": 100 },
+        "className": { "type": "string", "maxLength": 100 },
+        "sectionId": { "type": "string", "maxLength": 100 },
+        "sectionName": { "type": "string", "maxLength": 100 },
+        "subjectId": { "type": "string", "maxLength": 100 },
+        "subjectName": { "type": "string", "maxLength": 120 },
+        "subjectColor": { "type": "string", "maxLength": 30 },
+        "absentTeacherId": { "type": "string", "maxLength": 100 },
+        "absentTeacherName": { "type": "string", "maxLength": 120 },
+        "proxyTeacherId": { "type": "string", "maxLength": 100 },
+        "proxyTeacherName": { "type": "string", "maxLength": 120 },
+        "assignedByEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "assignedByName": { "type": "string", "maxLength": 100 },
+        "assignedByRole": { "type": "string", "enum": ["super_admin", "admin"] },
+        "status": { "type": "string", "enum": ["assigned", "completed", "cancelled"] },
+        "room": { "type": "string", "maxLength": 80 },
+        "matchType": { "type": "string", "enum": ["same_subject", "same_department", "free_teacher", "manual"] },
+        "matchReason": { "type": "string", "maxLength": 200 },
+        "overriddenWarning": { "type": "string", "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "date",
+        "day",
+        "periodIndex",
+        "periodLabel",
+        "periodTime",
+        "classId",
+        "className",
+        "sectionId",
+        "sectionName",
+        "subjectId",
+        "subjectName",
+        "absentTeacherId",
+        "absentTeacherName",
+        "proxyTeacherId",
+        "proxyTeacherName",
+        "assignedByEmail",
+        "assignedByName",
+        "assignedByRole",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DailyAbsenceRecord": {
+      "title": "DailyAbsenceRecord",
+      "description": "Date-keyed list of absent or on-leave teachers used for smart proxy availability checks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 20, "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "date": { "type": "string", "maxLength": 10 },
+        "day": { "type": "string", "enum": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] },
+        "absentTeacherIds": { "type": "array", "items": { "type": "string", "maxLength": 100 } },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "updatedByName": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "date", "day", "absentTeacherIds", "updatedAt", "updatedByEmail", "updatedByName"]
+    },
     "ConnectionCheck": {
       "title": "ConnectionCheck",
       "description": "Read-only connection health check document.",
@@ -224,6 +300,14 @@
     "/audit_logs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLogEntry" },
       "description": "Append-only audit trail of routine and RBAC changes."
+    },
+    "/proxy_logs/{logId}": {
+      "schema": { "$ref": "#/entities/ProxyLogEntry" },
+      "description": "Protected proxy class assignment log & report records accessible only to active admins and Super Admin."
+    },
+    "/daily_absences/{dateId}": {
+      "schema": { "$ref": "#/entities/DailyAbsenceRecord" },
+      "description": "Protected daily absent teacher records keyed by YYYY-MM-DD accessible only to active admins and Super Admin."
     },
     "/test/{docId}": {
       "schema": { "$ref": "#/entities/ConnectionCheck" },

@@ -26,6 +26,7 @@ import {
   isSubjectSelectedForSection,
 } from './parallelSubjects';
 import { isSlotDismissed } from './scheduleTiers';
+import { getTeacherDailyMax } from './workloadService';
 
 export interface VerificationScope {
   type: 'all' | 'class' | 'section';
@@ -300,9 +301,6 @@ export function verifyRoutine(
       if (hasHmt && isAgricultureSubject(req.subjectId, subjects)) {
         target = Math.max(target, hmtTarget);
       }
-      if (hasRel && hasHin && isHinduReligionSubject(req.subjectId, subjects)) {
-        target = Math.max(target, relTarget);
-      }
 
       // Add to physical clock demand (skip partner if paired)
       const isPairedAgr =
@@ -414,7 +412,7 @@ export function verifyRoutine(
           const effReqs = getEffectiveSectionRequirements(cls, sec.id, teachers);
           effReqs.forEach(req => {
             let expectedTch = getExpectedSectionTeacherId(cls, sec.id, req.subjectId, teachers);
-            if (!expectedTch && isHinduReligionSubject(req.subjectId, subjects) && teacher.id === combinedHinduTeacherId) {
+            if (isHinduReligionSubject(req.subjectId, subjects) && combinedHinduTeacherId) {
               const secExplicit = sec.subjectConfigs?.[req.subjectId]?.assignedTeacherId;
               if (secExplicit === undefined) {
                 expectedTch = combinedHinduTeacherId;
@@ -428,7 +426,7 @@ export function verifyRoutine(
       });
     }
 
-    const maxDaily = teacher.maxDailyPeriods || 4;
+    const maxDaily = getTeacherDailyMax(teacher);
     let peakDailyAssigned = 0;
     let dailyLimitViolations = 0;
     let activeDays = 0;
@@ -555,6 +553,25 @@ export function verifyRoutine(
     workloadFailReasons.push(`${wrongTeacherConflicts.length}টি সেকশনে নির্ধারিত শিক্ষকের অমিল`);
   }
 
+  const limitTeacherSummaryMap = new Map<string, { name: string; count: number; days: string[] }>();
+  limitConflicts.forEach(c => {
+    const tName = c.teacherId
+      ? teacherMap.get(c.teacherId)?.name ||
+        c.title.replace(/^Daily Period Limit Exceeded:\s*|^Teacher Weekly Capacity Exceeded:\s*/, '')
+      : c.title;
+    const key = c.teacherId || tName;
+    const existing = limitTeacherSummaryMap.get(key) || { name: tName, count: 0, days: [] };
+    existing.count += 1;
+    const label = c.id.startsWith('conf-tweek-') ? 'Weekly' : c.day;
+    if (label && !existing.days.includes(label)) {
+      existing.days.push(label);
+    }
+    limitTeacherSummaryMap.set(key, existing);
+  });
+  const limitTeachersDetail = Array.from(limitTeacherSummaryMap.values())
+    .map(item => `${item.name} (${item.count}টি: ${item.days.join(', ')})`)
+    .join(' · ');
+
   const availConflictCount = teacherDoubleBookings.length + unavailableConflicts.length;
 
   const finalValidation: FinalValidationSummary = {
@@ -597,7 +614,7 @@ export function verifyRoutine(
       detail:
         teacherLimitViolationsCount === 0
           ? 'সকল শিক্ষক দৈনিক ও সাপ্তাহিক সর্বোচ্চ ক্লাস সীমার মধ্যে আছেন।'
-          : `${teacherLimitViolationsCount}টি দৈনিক/সাপ্তাহিক পিরিয়ড সীমা লঙ্ঘন পাওয়া গেছে (${limitConflicts[0].title})।`,
+          : `${teacherLimitViolationsCount}টি দৈনিক/সাপ্তাহিক পিরিয়ড সীমা লঙ্ঘন (${limitTeacherSummaryMap.size} জন শিক্ষক): ${limitTeachersDetail}।`,
     },
     teacherAvailabilityConflicts: {
       id: 'fv-avail',

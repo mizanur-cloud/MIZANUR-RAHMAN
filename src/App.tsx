@@ -9,7 +9,10 @@ import {
   AdminAccount,
   AuditActionType,
   AuditLogEntry,
+  DailyAbsenceRecord,
   DayOfWeek,
+  ProxyLogEntry,
+  ProxyLogStatus,
   RoutineConflict,
   SchoolClass,
   Subject,
@@ -18,23 +21,33 @@ import {
 } from './types';
 import {
   AppState,
+  loadStoredDailyAbsences,
   loadStoredData,
+  loadStoredProxyLogs,
   resetToDefaults,
+  saveStoredDailyAbsences,
   saveStoredData,
+  saveStoredProxyLogs,
 } from './services/storage';
 import { detectAllConflicts } from './services/conflictDetector';
 import { generateSmartTimetable, autoFixRoutine, GenerationOptions, GenerationResult } from './services/routineGenerator';
 import { syncTeacherAssignmentsToClasses, syncClassesToTeachers } from './services/teacherSubjectSync';
 import { useAuth } from './context/AuthContext';
 import {
+  deleteProxyLogFromCloud,
   PublishedRoutineMetadata,
   PublishedRoutineSchedule,
+  saveDailyAbsenceToCloud,
+  saveProxyLogToCloud,
   saveRoutineToCloud,
   StaffContactMap,
   subscribeAllAdmins,
   subscribeAuditLogs,
+  subscribeDailyAbsences,
+  subscribeProxyLogs,
   subscribePublishedRoutine,
   subscribeStaffContacts,
+  updateProxyLogStatusInCloud,
 } from './services/rbacService';
 import {
   AGRICULTURE_ROOM,
@@ -129,6 +142,8 @@ export default function App() {
   // Super Admin Control Panel data (only subscribed when isSuperAdmin)
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [proxyLogs, setProxyLogs] = useState<ProxyLogEntry[]>([]);
+  const [dailyAbsences, setDailyAbsences] = useState<Record<string, DailyAbsenceRecord>>({});
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [secretRouteRequested, setSecretRouteRequested] = useState<boolean>(() => isSecretControlRoute());
@@ -359,6 +374,33 @@ export default function App() {
   useEffect(() => {
     return subscribeAuditLogs(isSuperAdmin, setAuditLogs);
   }, [isSuperAdmin]);
+
+  // Subscribe Proxy Logs & Daily Absences strictly when Active Admin / Super Admin
+  useEffect(() => {
+    if (!canEdit) {
+      setProxyLogs([]);
+      setDailyAbsences({});
+      return;
+    }
+
+    const cachedLogs = loadStoredProxyLogs();
+    if (cachedLogs.length > 0) setProxyLogs(cachedLogs);
+    const cachedAbsences = loadStoredDailyAbsences();
+    if (Object.keys(cachedAbsences).length > 0) setDailyAbsences(cachedAbsences);
+
+    const unsubLogs = subscribeProxyLogs(true, cloudLogs => {
+      setProxyLogs(cloudLogs);
+      saveStoredProxyLogs(cloudLogs);
+    });
+    const unsubAbs = subscribeDailyAbsences(true, cloudAbsences => {
+      setDailyAbsences(cloudAbsences);
+      saveStoredDailyAbsences(cloudAbsences);
+    });
+    return () => {
+      unsubLogs();
+      unsubAbs();
+    };
+  }, [canEdit]);
 
   // Instant Action Effect: Immediately revoke open editing modals & restricted tabs if access drops
   useEffect(() => {
@@ -1211,6 +1253,157 @@ export default function App() {
     if (newState.teachers[0]) setSelectedTeacherId(newState.teachers[0].id);
   };
 
+  // RBAC-guarded Proxy Log & Daily Absence handlers
+  const handleSaveProxyLog = async (log: ProxyLogEntry, isNew: boolean) => {
+    if (!canEdit || !email) {
+      showNotice('অনুমতি নেই: প্রক্সি লগ সংরক্ষণ করতে Active Admin বা Super Admin হতে হবে।');
+      return;
+    }
+    setProxyLogs(prev => {
+      const next = isNew ? [log, ...prev] : prev.map(p => (p.id === log.id ? log : p));
+      saveStoredProxyLogs(next);
+      return next;
+    });
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      await saveProxyLogToCloud({
+        log,
+        isNew,
+        actorEmail: email,
+        actorName: displayName,
+        actorRole,
+      });
+      showNotice(`প্রক্সি বরাদ্দ সংরক্ষিত: ${log.className} (${log.periodLabel}) → ${log.proxyTeacherName}`);
+    } catch (err) {
+      console.error('Failed to save proxy log:', err);
+      showNotice('প্রক্সি লগ ক্লাউডে সংরক্ষণ করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleSaveMultipleProxyLogs = async (items: { log: ProxyLogEntry; isNew: boolean }[]) => {
+    if (!canEdit || !email) {
+      showNotice('অনুমতি নেই: প্রক্সি লগ সংরক্ষণ করতে Active Admin বা Super Admin হতে হবে।');
+      return;
+    }
+    setProxyLogs(prev => {
+      const byId = new Map(prev.map(p => [p.id, p]));
+      for (const item of items) {
+        byId.set(item.log.id, item.log);
+      }
+      const next = Array.from(byId.values());
+      saveStoredProxyLogs(next);
+      return next;
+    });
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      for (const item of items) {
+        await saveProxyLogToCloud({
+          log: item.log,
+          isNew: item.isNew,
+          actorEmail: email,
+          actorName: displayName,
+          actorRole,
+        });
+      }
+      showNotice(`${items.length}টি প্রক্সি ক্লাস সফলভাবে লগে সংরক্ষিত হয়েছে।`);
+    } catch (err) {
+      console.error('Batch proxy save error:', err);
+      showNotice('প্রক্সি ব্যাচ সংরক্ষণে আংশিক সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleUpdateProxyStatus = async (
+    logId: string,
+    status: ProxyLogStatus,
+    summary: string
+  ) => {
+    if (!canEdit || !email) {
+      showNotice('অনুমতি নেই: প্রক্সি স্ট্যাটাস পরিবর্তন করতে পারবেন না।');
+      return;
+    }
+    setProxyLogs(prev => {
+      const next = prev.map(p =>
+        p.id === logId ? { ...p, status, updatedAt: new Date().toISOString() } : p
+      );
+      saveStoredProxyLogs(next);
+      return next;
+    });
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      await updateProxyLogStatusInCloud({
+        logId,
+        status,
+        summary,
+        actorEmail: email,
+        actorName: displayName,
+        actorRole,
+      });
+      showNotice('প্রক্সি স্ট্যাটাস আপডেট হয়েছে।');
+    } catch (err) {
+      console.error('Failed to update proxy status:', err);
+      showNotice('প্রক্সি স্ট্যাটাস ক্লাউডে আপডেট করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleDeleteProxyLog = async (logId: string, summary: string) => {
+    if (!canEdit || !email) {
+      showNotice('অনুমতি নেই: প্রক্সি লগ মুছতে পারবেন না।');
+      return;
+    }
+    setProxyLogs(prev => {
+      const next = prev.filter(p => p.id !== logId);
+      saveStoredProxyLogs(next);
+      return next;
+    });
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      await deleteProxyLogFromCloud({
+        logId,
+        summary,
+        actorEmail: email,
+        actorName: displayName,
+        actorRole,
+      });
+      showNotice('প্রক্সি লগটি মুছে ফেলা হয়েছে।');
+    } catch (err) {
+      console.error('Failed to delete proxy log:', err);
+      showNotice('প্রক্সি লগ ক্লাউড থেকে মুছতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleSaveDailyAbsences = async (
+    date: string,
+    day: DayOfWeek,
+    absentTeacherIds: string[]
+  ) => {
+    if (!canEdit || !email) return;
+    const record: DailyAbsenceRecord = {
+      id: date,
+      date,
+      day,
+      absentTeacherIds,
+      updatedAt: new Date().toISOString(),
+      updatedByEmail: email,
+      updatedByName: displayName,
+    };
+    setDailyAbsences(prev => {
+      const next = { ...prev, [date]: record };
+      saveStoredDailyAbsences(next);
+      return next;
+    });
+    try {
+      await saveDailyAbsenceToCloud({
+        date,
+        day,
+        absentTeacherIds,
+        actorEmail: email,
+        actorName: displayName,
+      });
+    } catch (err) {
+      console.error('Failed to save daily absences:', err);
+    }
+  };
+
   const routeAccessDenied = authReady && secretRouteRequested && !isSuperAdmin;
 
   const handleSelectTab = (tab: WorkspaceTab) => {
@@ -1499,6 +1692,16 @@ export default function App() {
                   subjects={data.subjects}
                   periodTimings={data.settings.periodTimings}
                   entries={data.entries}
+                  proxyLogs={proxyLogs}
+                  dailyAbsences={dailyAbsences}
+                  onSaveProxyLog={handleSaveProxyLog}
+                  onSaveMultipleProxyLogs={handleSaveMultipleProxyLogs}
+                  onUpdateProxyStatus={handleUpdateProxyStatus}
+                  onDeleteProxyLog={handleDeleteProxyLog}
+                  onSaveDailyAbsences={handleSaveDailyAbsences}
+                  actorEmail={email || undefined}
+                  actorName={displayName}
+                  actorRole={isSuperAdmin ? 'super_admin' : 'admin'}
                 />
               )}
 
@@ -1508,12 +1711,14 @@ export default function App() {
                   teachers={data.teachers}
                   subjects={data.subjects}
                   entries={data.entries}
+                  proxyLogs={proxyLogs}
                   conflicts={conflicts}
                   workingDays={data.settings.workingDays}
                   periodTimings={data.settings.periodTimings}
                   settings={data.settings}
                   onOpenAutoGenerate={() => canEdit && setIsAutoGenerateOpen(true)}
                   onAutoFixRoutine={handleAutoFixRoutine}
+                  onUpdateTeachers={handleUpdateTeachers}
                   onSelectTeacher={tId => {
                     setSelectedTeacherId(tId);
                     setActiveTab('teachers');
@@ -1645,6 +1850,7 @@ export default function App() {
           subjects={data.subjects}
           periodTimings={data.settings.periodTimings}
           entries={data.entries}
+          proxyLogs={proxyLogs}
           settings={data.settings}
           onSaveEntry={handleSaveEntry}
           onDeleteEntry={handleClearSlot}
@@ -1725,6 +1931,7 @@ export default function App() {
             subjects={data.subjects}
             classes={data.classes}
             entries={data.entries}
+            proxyLogs={proxyLogs}
             workingDays={data.settings.workingDays}
             periodTimings={data.settings.periodTimings}
             onUpdateTeachers={handleUpdateTeachers}

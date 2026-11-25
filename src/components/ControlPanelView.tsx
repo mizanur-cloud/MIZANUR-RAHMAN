@@ -51,6 +51,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
   // Filter & reason modal state
   const [adminSearch, setAdminSearch] = useState('');
   const [logSearch, setLogSearch] = useState('');
+  const [logCategory, setLogCategory] = useState<'all' | 'security' | 'proxy' | 'routine'>('all');
   const [statusReasonPrompt, setStatusReasonPrompt] = useState<{
     admin: AdminAccount;
     nextStatus: AdminStatus;
@@ -79,15 +80,24 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
 
   const filteredLogs = useMemo(() => {
     const q = logSearch.trim().toLowerCase();
-    if (!q) return auditLogs;
-    return auditLogs.filter(
-      l =>
+    return auditLogs.filter(l => {
+      if (logCategory === 'security' && !l.action.startsWith('admin_')) return false;
+      if (logCategory === 'proxy' && !l.action.startsWith('proxy_')) return false;
+      if (
+        logCategory === 'routine' &&
+        (l.action.startsWith('admin_') || l.action.startsWith('proxy_'))
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         l.targetSummary.toLowerCase().includes(q) ||
         l.actorName.toLowerCase().includes(q) ||
         l.actorEmail.toLowerCase().includes(q) ||
         l.action.toLowerCase().includes(q)
-    );
-  }, [auditLogs, logSearch]);
+      );
+    });
+  }, [auditLogs, logSearch, logCategory]);
 
   const formatTimestamp = (ts: any): string => {
     if (!ts) return '—';
@@ -526,15 +536,27 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                 কে কখন কোন রুটিন এডিট বা সিকিউরিটি পরিবর্তন করেছে — এটি পরিবর্তন বা মুছে ফেলা যায় না।
               </p>
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={logSearch}
-                onChange={e => setLogSearch(e.target.value)}
-                placeholder="ইউজার বা কাজের বিবরণ খুঁজুন..."
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <select
+                value={logCategory}
+                onChange={e => setLogCategory(e.target.value as 'all' | 'security' | 'proxy' | 'routine')}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">সব অ্যাক্টিভিটি</option>
+                <option value="security">সিকিউরিটি ও এডমিন</option>
+                <option value="proxy">প্রক্সি ও ওভারলোড</option>
+                <option value="routine">রুটিন ও ক্লাস</option>
+              </select>
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={logSearch}
+                  onChange={e => setLogSearch(e.target.value)}
+                  placeholder="ইউজার বা কাজের বিবরণ খুঁজুন..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
           </div>
 

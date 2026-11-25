@@ -148,6 +148,7 @@ export function isHinduReligionTeacher(teacher: Teacher, subjects?: Subject[]): 
   const lowerName = (teacher.name || '').toLowerCase();
   const lowerDesig = (teacher.designation || '').toLowerCase();
   if (
+    lowerName.includes('taposh') ||
     lowerName.includes('tapash') ||
     lowerName.includes('tapas') ||
     lowerName.includes('তাপস') ||
@@ -170,7 +171,7 @@ export function getCombinedHinduTeacherId(
   }
   const tapash = teachers.find(t => {
     const n = (t.name || '').toLowerCase();
-    return t.id === 'tch-tapash' || n.includes('tapash') || n.includes('তাপস');
+    return t.id === 'tch-tapash' || n.includes('taposh') || n.includes('tapash') || n.includes('tapas') || n.includes('তাপস');
   });
   if (tapash) return tapash.id;
   return teachers.find(t => !t.isBlockTeacher && isHinduReligionTeacher(t, subjects))?.id;

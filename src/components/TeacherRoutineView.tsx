@@ -36,6 +36,7 @@ import { exportAllTeachersPdf, exportTeacherPdf } from '../services/exportPdf';
 import { AppState } from '../services/storage';
 import {
   getCombinedHinduRoom,
+  getCombinedHinduTeacherId,
   getEffectiveSectionRequirements,
   isHinduReligionRoom,
   isHinduReligionSubject,
@@ -155,13 +156,21 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
     dailyLoad[d] = new Set(teacherEntries.filter(e => e.day === d).map(e => e.periodIndex)).size;
   });
 
+  const combinedHinduTeacherId = getCombinedHinduTeacherId(teachers, settings, subjects);
   let configuredTargetPeriods = 0;
   if (selectedTeacher && !selectedTeacher.isBlockTeacher) {
     classes.forEach(cls => {
       if (cls.usesShifts || cls.numericGrade < 0) return;
       cls.sections.forEach(sec => {
         getEffectiveSectionRequirements(cls, sec.id, teachers).forEach(req => {
-          if (req.assignedTeacherId === selectedTeacher.id) {
+          let expectedTch = req.assignedTeacherId;
+          if (isHinduReligionSubject(req.subjectId, subjects) && combinedHinduTeacherId) {
+            const secExplicit = sec.subjectConfigs?.[req.subjectId]?.assignedTeacherId;
+            if (secExplicit === undefined) {
+              expectedTch = combinedHinduTeacherId;
+            }
+          }
+          if (expectedTch === selectedTeacher.id) {
             configuredTargetPeriods += req.periodsPerWeek;
           }
         });
@@ -242,11 +251,28 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                     </h2>
                     <div className="text-[11px] text-stone-500 dark:text-slate-400 truncate">
                       {selectedTeacher.designation} ·{' '}
-                      <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
-                        {physicalPeriodCount}
-                        {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''}
-                      </span>{' '}
-                      পিরিয়ড ·{' '}
+                      {teacherEntries.length > physicalPeriodCount ? (
+                        <>
+                          <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
+                            {physicalPeriodCount}
+                          </span>{' '}
+                          পিরিয়ড (
+                          <span className="font-mono tabular-nums font-semibold text-indigo-700 dark:text-indigo-300">
+                            {teacherEntries.length}
+                            {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''}
+                          </span>{' '}
+                          সেকশন)
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
+                            {physicalPeriodCount}
+                            {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''}
+                          </span>{' '}
+                          পিরিয়ড
+                        </>
+                      )}
+                      {' · '}
                       <span className="font-mono tabular-nums">
                         {Object.values(dailyLoad).filter(c => c > 0).length}/{workingDays.length}
                       </span>{' '}
@@ -552,7 +578,8 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                       {physicalPeriodCount}
                       {teacherEntries.length > physicalPeriodCount ? (
                         <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400 ml-1">
-                          ({teacherEntries.length} sec)
+                          ({teacherEntries.length}
+                          {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''} sec)
                         </span>
                       ) : configuredTargetPeriods > 0 ? (
                         <span className="text-xs font-normal text-slate-500"> / {configuredTargetPeriods}</span>

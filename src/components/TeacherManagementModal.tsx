@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
+  ProxyLogEntry,
   SchoolClass,
   Subject,
   Teacher,
@@ -10,7 +11,14 @@ import {
 } from '../types';
 import { INITIAL_SETTINGS } from '../data/initialData';
 import { BENGALI_DAY_NAMES } from '../services/scheduleTiers';
-import { isTeacherBlockedAtSlot } from '../services/parallelSubjects';
+import { isAgricultureSubject, isHinduReligionSubject, isTeacherBlockedAtSlot } from '../services/parallelSubjects';
+import {
+  computeTeacherWorkload,
+  DEFAULT_DAILY_MAX_PERIODS,
+  DEFAULT_WEEKLY_MAX_PERIODS,
+  getTeacherDailyMax,
+  getTeacherWeeklyMax,
+} from '../services/workloadService';
 import {
   X,
   Plus,
@@ -35,6 +43,7 @@ interface TeacherManagementModalProps {
   subjects: Subject[];
   classes: SchoolClass[];
   entries?: TimetableEntry[];
+  proxyLogs?: ProxyLogEntry[];
   workingDays?: DayOfWeek[];
   periodTimings?: PeriodTiming[];
   onUpdateTeachers: (updated: Teacher[]) => void;
@@ -49,6 +58,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   subjects,
   classes,
   entries = [],
+  proxyLogs = [],
   workingDays = INITIAL_SETTINGS.workingDays,
   periodTimings = INITIAL_SETTINGS.periodTimings,
   onUpdateTeachers,
@@ -73,6 +83,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [assignedClassSections, setAssignedClassSections] = useState<TeacherClassAssignment[]>([]);
   const [maxConsecutive, setMaxConsecutive] = useState<number>(2);
+  const [maxDaily, setMaxDaily] = useState<number>(DEFAULT_DAILY_MAX_PERIODS);
+  const [maxWeekly, setMaxWeekly] = useState<number>(DEFAULT_WEEKLY_MAX_PERIODS);
   const [isBlockTeacher, setIsBlockTeacher] = useState<boolean>(false);
   const [isCoordinator, setIsCoordinator] = useState<boolean>(false);
   const [noProxy, setNoProxy] = useState<boolean>(false);
@@ -106,6 +118,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setAssignmentSubjectId(tSubs[0] || '');
     setAssignedClassSections(teacher.assignedClassSections || []);
     setMaxConsecutive(teacher.maxConsecutivePeriods || 2);
+    setMaxDaily(getTeacherDailyMax(teacher));
+    setMaxWeekly(getTeacherWeeklyMax(teacher));
     setIsBlockTeacher(Boolean(teacher.isBlockTeacher));
     setIsCoordinator(Boolean(teacher.isCoordinator));
     setNoProxy(Boolean(teacher.noProxy));
@@ -126,6 +140,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setAssignmentSubjectId(defaultSub);
     setAssignedClassSections([]);
     setMaxConsecutive(2);
+    setMaxDaily(DEFAULT_DAILY_MAX_PERIODS);
+    setMaxWeekly(DEFAULT_WEEKLY_MAX_PERIODS);
     setIsBlockTeacher(false);
     setIsCoordinator(false);
     setNoProxy(false);
@@ -206,6 +222,24 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     const sortedUnavailablePeriods = Array.from(new Set(unavailablePeriods)).sort((a, b) => a - b);
 
     if (isAddingNew) {
+      const lowerNewName = name.trim().toLowerCase();
+      const lowerNewDesig = (designation.trim() || '').toLowerCase();
+      const isCombinedSpecialist =
+        selectedSubjectIds.some(
+          id => isHinduReligionSubject(id, subjects) || isAgricultureSubject(id, subjects)
+        ) ||
+        lowerNewName.includes('taposh') ||
+        lowerNewName.includes('tapash') ||
+        lowerNewName.includes('tapas') ||
+        lowerNewName.includes('তাপস') ||
+        lowerNewName.includes('moazzem') ||
+        lowerNewName.includes('মোয়াজ্জেম') ||
+        lowerNewName.includes('মোয়াজ্জেম') ||
+        lowerNewDesig.includes('hindu') ||
+        lowerNewDesig.includes('হিন্দু') ||
+        lowerNewDesig.includes('agriculture') ||
+        lowerNewDesig.includes('কৃষি');
+
       targetTeacher = {
         id: `tch-${Date.now().toString(36)}`,
         name: name.trim(),
@@ -216,7 +250,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         subjectIds: selectedSubjectIds,
         assignedClassSections: assignedClassSections,
         maxConsecutivePeriods: maxConsecutive,
-        maxDailyPeriods: 4,
+        maxDailyPeriods: Math.max(1, Math.min(10, Number(maxDaily) || (isCombinedSpecialist ? 5 : 4))),
+        maxWeeklyPeriods: Math.max(1, Math.min(48, Number(maxWeekly) || DEFAULT_WEEKLY_MAX_PERIODS)),
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
@@ -236,6 +271,8 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         subjectIds: selectedSubjectIds,
         assignedClassSections: assignedClassSections,
         maxConsecutivePeriods: maxConsecutive,
+        maxDailyPeriods: Math.max(1, Math.min(10, Number(maxDaily) || DEFAULT_DAILY_MAX_PERIODS)),
+        maxWeeklyPeriods: Math.max(1, Math.min(48, Number(maxWeekly) || DEFAULT_WEEKLY_MAX_PERIODS)),
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
@@ -376,7 +413,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
               ) : (
                 filteredTeachers.map(t => {
                   const isSelected = editingTeacher?.id === t.id;
-                  const routineCount = getAssignedCount(t.id);
+                  const wl = computeTeacherWorkload(t, entries, proxyLogs, { workingDays });
 
                   return (
                     <div
@@ -462,13 +499,19 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                         </div>
 
                         <span
-                          className={`font-semibold px-1.5 py-0.2 rounded shrink-0 ${
-                            routineCount > 0
+                          title={`নিয়মিত: ${wl.regularWeeklyPeriods} + প্রক্সি: ${wl.proxyWeeklyPeriods} / সাপ্তাহিক লিমিট: ${wl.weeklyMax}`}
+                          className={`font-mono font-semibold px-1.5 py-0.2 rounded shrink-0 tabular-nums ${
+                            wl.status === 'Overloaded'
+                              ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
+                              : wl.status === 'Near Limit'
+                              ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
+                              : wl.totalWeeklyLoad > 0
                               ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                           }`}
                         >
-                          {routineCount > 0 ? `${routineCount} ক্লাস` : 'ফ্রি'}
+                          {wl.totalWeeklyLoad}/{wl.weeklyMax}
+                          {wl.proxyWeeklyPeriods > 0 ? ` (+${wl.proxyWeeklyPeriods}P)` : ''}
                         </span>
                       </div>
                     </div>
@@ -547,7 +590,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                      Max Consecutive Classes (একটানা সর্বোচ্চ ক্লাস)
+                      Max Consecutive Classes (একটানা সর্বোচ্চ)
                     </label>
                     <select
                       value={maxConsecutive}
@@ -559,6 +602,40 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                       <option value={3}>3 periods max</option>
                       <option value={4}>4 periods max</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Weekly Max Periods (সাপ্তাহিক সর্বোচ্চ ক্লাস লিমিট)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={48}
+                        value={maxWeekly}
+                        onChange={e => setMaxWeekly(Math.max(1, Math.min(48, Number(e.target.value) || 24)))}
+                        className="w-full px-3 py-1.5 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                      />
+                      <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ২৪</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Daily Max Periods (দৈনিক সর্বোচ্চ ক্লাস)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={maxDaily}
+                        onChange={e => setMaxDaily(Math.max(1, Math.min(10, Number(e.target.value) || 5)))}
+                        className="w-full px-3 py-1.5 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                      />
+                      <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ৫</span>
+                    </div>
                   </div>
                 </div>
 

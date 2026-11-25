@@ -20,6 +20,7 @@ import {
   isTeacherBlockedAtSlot,
   isTeacherBlockTeacher,
 } from './parallelSubjects';
+import { getTeacherDailyMax } from './workloadService';
 
 export function detectAllConflicts(
   entries: TimetableEntry[],
@@ -432,17 +433,12 @@ export function detectAllConflicts(
       const hasHmt =
         isClassNineOrTen(cls) &&
         effectiveReqs.some(r => isHigherMathSubject(r.subjectId, subjects));
-      const hasRel = effectiveReqs.some(r => isIslamReligionSubject(r.subjectId, subjects));
 
       effectiveReqs.forEach(req => {
         let effectiveMax = req.periodsPerWeek;
         if (hasHmt && isAgricultureSubject(req.subjectId, subjects)) {
           const hmtReq = effectiveReqs.find(r => isHigherMathSubject(r.subjectId, subjects));
           if (hmtReq) effectiveMax = Math.max(effectiveMax, hmtReq.periodsPerWeek);
-        }
-        if (hasRel && isHinduReligionSubject(req.subjectId, subjects)) {
-          const relReq = effectiveReqs.find(r => isIslamReligionSubject(r.subjectId, subjects));
-          if (relReq) effectiveMax = Math.max(effectiveMax, relReq.periodsPerWeek);
         }
 
         const matched = secEntries.filter(e => e.subjectId === req.subjectId);
@@ -663,7 +659,7 @@ export function detectAllConflicts(
   teachers.forEach(teacher => {
     let totalPhysicalPeriods = 0;
     const allTeacherEntries = entries.filter(e => e.teacherId === teacher.id);
-    const maxDaily = teacher.maxDailyPeriods || 4;
+    const maxDaily = getTeacherDailyMax(teacher);
 
     workingDays.forEach(day => {
       const physicalDaySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, day);
@@ -677,7 +673,7 @@ export function detectAllConflicts(
           day,
           periodIndex: physicalDaySlots[physicalDaySlots.length - 1].periodIndex,
           title: `Daily Period Limit Exceeded: ${teacher.name}`,
-          description: `${teacher.name} has ${physicalDaySlots.length} physical classes on ${day}, exceeding configured daily maximum of ${maxDaily} periods.`,
+          description: `${teacher.name} has ${physicalDaySlots.length} physical classes on ${day}, exceeding configured daily maximum of ${maxDaily} periods (${day} দিনে ${physicalDaySlots.length}টি ক্লাস — সীমা ${maxDaily})।`,
           entryIds: dayEntries.map(e => e.id),
           teacherId: teacher.id,
         });
