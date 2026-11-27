@@ -3,6 +3,7 @@ import {
   PeriodTiming,
   ProxyLogEntry,
   SchoolClass,
+  SchoolSettings,
   Subject,
   Teacher,
   TimetableEntry,
@@ -67,7 +68,7 @@ export interface BusyProxyCandidate {
   teacher: Teacher;
   workload: TeacherWorkloadSummary;
   reason: string;
-  reasonCode: 'absent' | 'exempt' | 'regular_class' | 'existing_proxy' | 'blocked_slot';
+  reasonCode: 'absent' | 'exempt' | 'regular_class' | 'existing_proxy' | 'daily_proxy_limit' | 'blocked_slot';
 }
 
 export interface SlotProxyEvaluation {
@@ -159,6 +160,7 @@ export function evaluateProxyCandidatesForSlot(params: {
   ignoreProxyLogId?: string;
   pendingSameDatePeriods?: { teacherId: string; periodIndex: number }[];
   sortMode?: 'lowest_load' | 'subject_first';
+  settings?: SchoolSettings;
 }): SlotProxyEvaluation {
   const {
     date,
@@ -173,6 +175,7 @@ export function evaluateProxyCandidatesForSlot(params: {
     ignoreProxyLogId,
     pendingSameDatePeriods = [],
     sortMode = 'lowest_load',
+    settings,
   } = params;
 
   const subjectDept = getDepartmentOfSubject(subjectId);
@@ -183,6 +186,7 @@ export function evaluateProxyCandidatesForSlot(params: {
     const workload = computeTeacherWorkload(teacher, allEntries, existingProxyLogs, {
       targetDate: date,
       targetDay: day,
+      settings,
     });
 
     if (absentTeacherIdsOnDate.includes(teacher.id)) {
@@ -256,6 +260,29 @@ export function evaluateProxyCandidatesForSlot(params: {
       continue;
     }
 
+    // Hard institutional rule: A teacher cannot be assigned more than 1 proxy class on the same date
+    const existingProxyOnDate = existingProxyLogs.find(
+      p =>
+        p.status !== 'cancelled' &&
+        p.id !== ignoreProxyLogId &&
+        p.proxyTeacherId === teacher.id &&
+        p.date === date
+    );
+    const pendingProxyOnDate = pendingSameDatePeriods.find(
+      p => p.teacherId === teacher.id
+    );
+    if (existingProxyOnDate || pendingProxyOnDate) {
+      busyCandidates.push({
+        teacher,
+        workload,
+        reason: existingProxyOnDate
+          ? `আজ ১টি প্রক্সি নির্ধারিত (${existingProxyOnDate.className} · P${existingProxyOnDate.periodIndex})`
+          : `আজ ১টি প্রক্সি নির্ধারিত (P${pendingProxyOnDate!.periodIndex})`,
+        reasonCode: 'daily_proxy_limit',
+      });
+      continue;
+    }
+
     const limitEval = evaluateAssignmentLimits({
       mode: 'proxy',
       teacher,
@@ -266,6 +293,7 @@ export function evaluateProxyCandidatesForSlot(params: {
       proxyLogs: existingProxyLogs,
       absentTeacherIdsOnDate,
       ignoreProxyLogId,
+      settings,
     });
 
     const isSameSubject = teacher.subjectIds.includes(subjectId);
@@ -334,10 +362,12 @@ export function generateDailyProxyPlan(
   options?: {
     targetDate?: string;
     proxyLogs?: ProxyLogEntry[];
+    settings?: SchoolSettings;
   }
 ): ProxyPlanResult {
   const targetDate = options?.targetDate || getLocalDateStr();
   const proxyLogs = options?.proxyLogs || [];
+  const settings = options?.settings;
 
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const classMap = new Map(classes.map(c => [c.id, c]));
@@ -362,6 +392,49 @@ export function generateDailyProxyPlan(
     const sub = subjectMap.get(entry.subjectId);
     const absentTch = teacherMap.get(entry.teacherId);
 
+    const alreadySaved = proxyLogs.find(
+      p =>
+        p.status !== 'cancelled' &&
+        p.date === targetDate &&
+        p.classId === entry.classId &&
+        p.sectionId === entry.sectionId &&
+        p.periodIndex === entry.periodIndex &&
+        p.subjectId === entry.subjectId
+    );
+    if (alreadySaved) {
+      assignedCount++;
+      pendingSameDatePeriods.push({
+        teacherId: alreadySaved.proxyTeacherId,
+        periodIndex: entry.periodIndex,
+      });
+      assignments.push({
+        id: alreadySaved.id,
+        originalEntryId: entry.id,
+        date: targetDate,
+        day,
+        periodIndex: entry.periodIndex,
+        periodLabel: alreadySaved.periodLabel || period?.label || `Period ${entry.periodIndex}`,
+        periodTime: alreadySaved.periodTime || `${period?.startTime || ''} - ${period?.endTime || ''}`,
+        classId: entry.classId,
+        className: cls?.name || alreadySaved.className,
+        sectionId: entry.sectionId,
+        sectionName: sec?.name || alreadySaved.sectionName,
+        subjectId: entry.subjectId,
+        subjectName: sub?.name || alreadySaved.subjectName,
+        subjectColor: sub?.color || alreadySaved.subjectColor || '#3B82F6',
+        absentTeacherId: entry.teacherId,
+        absentTeacherName: absentTch?.name || alreadySaved.absentTeacherName,
+        substituteTeacherId: alreadySaved.proxyTeacherId,
+        substituteTeacherName: alreadySaved.proxyTeacherName,
+        matchType: alreadySaved.matchType || 'manual',
+        matchReason: alreadySaved.matchReason || 'Saved in Proxy Log',
+        room: entry.room || sec?.roomNumber || alreadySaved.room,
+        status: 'assigned',
+        overriddenWarning: alreadySaved.overriddenWarning,
+      });
+      continue;
+    }
+
     // Merged rule: preserve old priority (Same Subject -> Department Peer -> Free Teacher)
     // while strictly checking same-date proxy clashes, absences, and weekly/daily limits
     const { freeCandidates } = evaluateProxyCandidatesForSlot({
@@ -377,6 +450,7 @@ export function generateDailyProxyPlan(
       subjects,
       pendingSameDatePeriods,
       sortMode: 'subject_first',
+      settings,
     });
 
     const nonOverloaded = freeCandidates.filter(c => !c.limitEval.hasOverloadWarning);

@@ -20,7 +20,12 @@ import {
   isTeacherBlockedAtSlot,
   isTeacherBlockTeacher,
 } from './parallelSubjects';
-import { getTeacherDailyMax } from './workloadService';
+import {
+  analyzeTeacherWeeklyPattern,
+  getTeacherDailyMax,
+  getTeacherMaxWorkingDays,
+  MAX_UNAVOIDABLE_THREE_CONSECUTIVE_DAYS,
+} from './workloadService';
 
 export function detectAllConflicts(
   entries: TimetableEntry[],
@@ -656,24 +661,43 @@ export function detectAllConflicts(
 
   // 6. Check Teacher Daily & Weekly Maximum Period Limits (deduplicated for combined Room 307 sessions)
   const maxWeeklySlots = Math.max(1, workingDays.length * Math.max(1, periodIndices.length));
+  const maxRelConc = getMaxReligionConcurrentSections(settings);
   teachers.forEach(teacher => {
     let totalPhysicalPeriods = 0;
     const allTeacherEntries = entries.filter(e => e.teacherId === teacher.id);
-    const maxDaily = getTeacherDailyMax(teacher);
+    const maxDaily = getTeacherDailyMax(teacher, settings);
+    const maxWorkDays = Math.min(workingDays.length, getTeacherMaxWorkingDays(teacher, settings));
+
+    let nonHinduCount = 0;
+    let hinduCombinedCount = 0;
+    allTeacherEntries.forEach(e => {
+      if (isHinduReligionSubject(e.subjectId, subjects) && isHinduReligionRoom(e.room, settings)) {
+        hinduCombinedCount += 1;
+      } else {
+        nonHinduCount += 1;
+      }
+    });
+    const minWeeklyPhysical = nonHinduCount + Math.ceil(hinduCombinedCount / Math.max(1, maxRelConc));
+    const minUnavoidablePeak = Math.max(maxDaily, Math.ceil(minWeeklyPhysical / Math.max(1, maxWorkDays)));
 
     workingDays.forEach(day => {
       const physicalDaySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, day);
       totalPhysicalPeriods += physicalDaySlots.length;
       if (physicalDaySlots.length > maxDaily) {
         const dayEntries = physicalDaySlots.flatMap(s => s.entries);
+        const isMathCapPeak = physicalDaySlots.length <= minUnavoidablePeak && minUnavoidablePeak > maxDaily;
         conflicts.push({
           id: `conf-tdaily-${teacher.id}-${day}`,
           type: 'teacher_limit_exceeded',
-          severity: 'warning',
+          severity: isMathCapPeak ? 'warning' : 'error',
           day,
           periodIndex: physicalDaySlots[physicalDaySlots.length - 1].periodIndex,
-          title: `Daily Period Limit Exceeded: ${teacher.name}`,
-          description: `${teacher.name} has ${physicalDaySlots.length} physical classes on ${day}, exceeding configured daily maximum of ${maxDaily} periods (${day} দিনে ${physicalDaySlots.length}টি ক্লাস — সীমা ${maxDaily})।`,
+          title: isMathCapPeak
+            ? `Curriculum Peak Notice: ${teacher.name}`
+            : `Daily Period Limit Exceeded: ${teacher.name}`,
+          description: isMathCapPeak
+            ? `${teacher.name}-এর সাপ্তাহিক নির্ধারিত লোড (${minWeeklyPhysical} পিরিয়ড ÷ ${maxWorkDays} কর্মদিবস) গাণিতিকভাবে দৈনিক ${maxDaily} ক্লাসের মধ্যে সংকুলান অযোগ্য হওয়ায় ${day} তারিখে ${physicalDaySlots.length}টি ক্লাস রয়েছে।`
+            : `${teacher.name} has ${physicalDaySlots.length} physical classes on ${day}, exceeding configured daily maximum of ${maxDaily} periods (${day} দিনে ${physicalDaySlots.length}টি ক্লাস — সীমা ${maxDaily})।`,
           entryIds: dayEntries.map(e => e.id),
           teacherId: teacher.id,
         });
@@ -690,6 +714,90 @@ export function detectAllConflicts(
         title: `Teacher Weekly Capacity Exceeded: ${teacher.name}`,
         description: `${teacher.name} has ${totalPhysicalPeriods} physical periods scheduled this week, exceeding total available teaching slots (${maxWeeklySlots}).`,
         entryIds: allTeacherEntries.map(e => e.id),
+        teacherId: teacher.id,
+      });
+    }
+  });
+
+  // 7 & 8. Check Teacher Weekly Working Days (<= maxWorkingDays, default 5) & Consecutive Streak Pattern (4+ strictly forbidden)
+  const teacherMaxSubFreq = new Map<string, number>();
+  const secSubFreqCount = new Map<string, number>();
+  entries.forEach(e => {
+    if (!e.teacherId) return;
+    const k = `${e.teacherId}__${e.classId}__${e.sectionId}__${e.subjectId}`;
+    const next = (secSubFreqCount.get(k) || 0) + 1;
+    secSubFreqCount.set(k, next);
+    if (next > (teacherMaxSubFreq.get(e.teacherId) || 0)) {
+      teacherMaxSubFreq.set(e.teacherId, next);
+    }
+  });
+
+  teachers.forEach(teacher => {
+    const allTeacherEntries = entries.filter(e => e.teacherId === teacher.id);
+    if (allTeacherEntries.length === 0) return;
+
+    const isBlockTch = isTeacherBlockTeacher(teacher, classes);
+    const maxSingleSubFreq = teacherMaxSubFreq.get(teacher.id) || 0;
+    const pattern = analyzeTeacherWeeklyPattern(teacher, allTeacherEntries, workingDays, undefined, maxSingleSubFreq, settings);
+
+    if (!isBlockTch && pattern.workingDaysExceeded) {
+      const minDaysMath = Math.max(
+        Math.ceil(pattern.physicalPeriods / Math.max(1, pattern.dailyMax)),
+        Math.min(workingDays.length, maxSingleSubFreq)
+      );
+      const reasonText =
+        maxSingleSubFreq > pattern.maxWorkingDays
+          ? `একই সেকশনে সপ্তাহে ${maxSingleSubFreq}টি পিরিয়ড থাকায় (দিনে ১ বার নিয়ম অনুযায়ী) ${pattern.maxWorkingDays} দিনে আনা গাণিতিকভাবে অসম্ভব`
+          : `সাপ্তাহিক ক্লাস ${pattern.physicalPeriods}টি ÷ দৈনিক সীমা ${pattern.dailyMax} অনুযায়ী কমপক্ষে ${minDaysMath} দিন প্রয়োজন`;
+      conflicts.push({
+        id: `conf-workdays-${teacher.id}`,
+        type: 'teacher_working_days_exceeded',
+        severity: pattern.mathematicallyImpossibleWorkingDays ? 'warning' : 'error',
+        day: workingDays[0] || 'Sunday',
+        periodIndex: periodIndices[0] || 1,
+        title: `Weekly Working Days Exceeded (${pattern.activeWorkingDays}/${pattern.maxWorkingDays}): ${teacher.name}`,
+        description: pattern.mathematicallyImpossibleWorkingDays
+          ? `${teacher.name}-এর ক্ষেত্রে ${reasonText}। বর্তমানে ${pattern.activeWorkingDays} দিন ক্লাস রয়েছে।`
+          : `${teacher.name} সপ্তাহে ${pattern.activeWorkingDays} দিন ক্লাস নিচ্ছেন (সর্বোচ্চ সীমা ${pattern.maxWorkingDays} দিন)। অটো-জেনারেট বা অটো-ফিক্স করলে ক্লাসগুলো ${pattern.maxWorkingDays} দিনে গুছিয়ে আসবে।`,
+        entryIds: allTeacherEntries.map(e => e.id),
+        teacherId: teacher.id,
+      });
+    }
+
+    if (pattern.fourPlusConsecDays.length > 0) {
+      const sampleDay = pattern.fourPlusConsecDays[0];
+      const daySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, sampleDay);
+      conflicts.push({
+        id: `conf-consec4plus-${teacher.id}`,
+        type: 'consecutive_pattern_exceeded',
+        severity: 'error',
+        day: sampleDay,
+        periodIndex: daySlots[daySlots.length - 1]?.periodIndex || periodIndices[0] || 1,
+        title: `4+ Consecutive Classes Forbidden: ${teacher.name}`,
+        description: `${teacher.name}-এর ${pattern.fourPlusConsecDays.join(', ')} দিনে একটানা ${pattern.maxConsecObserved}টি পিরিয়ড পড়েছে। ৪টি বা তার বেশি একটানা ক্লাস সম্পূর্ণ নিষিদ্ধ।`,
+        entryIds: allTeacherEntries.filter(e => pattern.fourPlusConsecDays.includes(e.day)).map(e => e.id),
+        teacherId: teacher.id,
+      });
+    } else if (!isBlockTch && pattern.threeConsecDays.length > MAX_UNAVOIDABLE_THREE_CONSECUTIVE_DAYS) {
+      const sampleDay = pattern.threeConsecDays[0];
+      const daySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, sampleDay);
+      const teachesMorningOnlyGrades = allTeacherEntries.some(e => {
+        const cls = classes.find(c => c.id === e.classId);
+        return cls && !isPlayOrNursery(cls) && cls.numericGrade <= 2;
+      });
+      const isPigeonholeForced =
+        pattern.physicalPeriods >= 20 || teachesMorningOnlyGrades || pattern.dailyMax >= 5 && pattern.physicalPeriods >= 18;
+      conflicts.push({
+        id: `conf-consec3excess-${teacher.id}`,
+        type: 'consecutive_pattern_exceeded',
+        severity: isPigeonholeForced ? 'warning' : 'error',
+        day: sampleDay,
+        periodIndex: daySlots[daySlots.length - 1]?.periodIndex || periodIndices[0] || 1,
+        title: `Excessive 3-Consecutive Days (${pattern.threeConsecDays.length} days): ${teacher.name}`,
+        description: isPigeonholeForced
+          ? `${teacher.name}-এর মর্নিং/উচ্চ সাপ্তাহিক লোডের (${pattern.physicalPeriods} পিরিয়ড) কারণে ${pattern.threeConsecDays.length} দিন একটানা ৩টি ক্লাস পড়েছে (৪+ সম্পূর্ণ ০টি)।`
+          : `${teacher.name}-এর সপ্তাহে ${pattern.threeConsecDays.length} দিন (${pattern.threeConsecDays.join(', ')}) একটানা ৩টি ক্লাস রয়েছে; সর্বোচ্চ ২ দিন অনুমোদিত।`,
+        entryIds: allTeacherEntries.filter(e => pattern.threeConsecDays.includes(e.day)).map(e => e.id),
         teacherId: teacher.id,
       });
     }

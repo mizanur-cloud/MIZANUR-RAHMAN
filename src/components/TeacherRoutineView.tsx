@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
@@ -123,38 +123,96 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
   const selectedTeacher =
     teachers.find(t => t.id === selectedTeacherId) || teachers[0];
 
-  const classMap = new Map(classes.map(c => [c.id, c]));
-  const subjectMap = new Map(subjects.map(s => [s.id, s]));
+  const classMap = useMemo(() => new Map(classes.map(c => [c.id, c])), [classes]);
+  const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s])), [subjects]);
   const allDisplayPeriods = periodTimings;
   const combinedHinduRoom = getCombinedHinduRoom(settings);
 
-  const filteredTeachers = teachers.filter(
-    t =>
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.initials.toLowerCase().includes(searchQuery.toLowerCase())
+  const teacherPhysicalCountMap = useMemo(() => {
+    const slotSets = new Map<string, Set<string>>();
+    for (const e of entries) {
+      let set = slotSets.get(e.teacherId);
+      if (!set) {
+        set = new Set<string>();
+        slotSets.set(e.teacherId, set);
+      }
+      set.add(`${e.day}_${e.periodIndex}`);
+    }
+    const countMap = new Map<string, number>();
+    slotSets.forEach((set, tid) => countMap.set(tid, set.size));
+    return countMap;
+  }, [entries]);
+
+  const filteredTeachers = useMemo(
+    () =>
+      teachers.filter(
+        t =>
+          t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.initials.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [teachers, searchQuery]
   );
 
-  const teacherEntries = entries.filter(e => e.teacherId === selectedTeacher?.id);
-  const physicalPeriodCount = new Set(teacherEntries.map(e => `${e.day}_${e.periodIndex}`)).size;
-
-  const dayOrder: Record<string, number> = {};
-  workingDays.forEach((d, idx) => (dayOrder[d] = idx));
-
-  const sortedEntries = [...teacherEntries].sort((a, b) => {
-    const dDiff = (dayOrder[a.day] ?? 99) - (dayOrder[b.day] ?? 99);
-    if (dDiff !== 0) return dDiff;
-    return a.periodIndex - b.periodIndex;
-  });
-
-  const teacherConflicts = conflicts.filter(
-    c => c.teacherId === selectedTeacher?.id || c.entryIds.some(id => teacherEntries.some(e => e.id === id))
+  const teacherEntries = useMemo(
+    () => entries.filter(e => e.teacherId === selectedTeacher?.id),
+    [entries, selectedTeacher?.id]
   );
 
-  const dailyLoad: Record<string, number> = {};
-  workingDays.forEach(d => {
-    dailyLoad[d] = new Set(teacherEntries.filter(e => e.day === d).map(e => e.periodIndex)).size;
-  });
+  const teacherSlotMap = useMemo(() => {
+    const map = new Map<string, TimetableEntry[]>();
+    for (const e of teacherEntries) {
+      const k = `${e.day}_${e.periodIndex}`;
+      const list = map.get(k);
+      if (list) list.push(e);
+      else map.set(k, [e]);
+    }
+    return map;
+  }, [teacherEntries]);
+
+  const physicalPeriodCount = selectedTeacher
+    ? teacherPhysicalCountMap.get(selectedTeacher.id) || 0
+    : 0;
+
+  const dayOrder = useMemo(() => {
+    const order: Record<string, number> = {};
+    workingDays.forEach((d, idx) => (order[d] = idx));
+    return order;
+  }, [workingDays]);
+
+  const sortedEntries = useMemo(
+    () =>
+      [...teacherEntries].sort((a, b) => {
+        const dDiff = (dayOrder[a.day] ?? 99) - (dayOrder[b.day] ?? 99);
+        if (dDiff !== 0) return dDiff;
+        return a.periodIndex - b.periodIndex;
+      }),
+    [teacherEntries, dayOrder]
+  );
+
+  const teacherConflicts = useMemo(
+    () =>
+      conflicts.filter(
+        c =>
+          c.teacherId === selectedTeacher?.id ||
+          c.entryIds.some(id => teacherEntries.some(e => e.id === id))
+      ),
+    [conflicts, selectedTeacher?.id, teacherEntries]
+  );
+
+  const conflictEntryIdSet = useMemo(() => {
+    const set = new Set<string>();
+    teacherConflicts.forEach(c => c.entryIds.forEach(id => set.add(id)));
+    return set;
+  }, [teacherConflicts]);
+
+  const dailyLoad = useMemo(() => {
+    const load: Record<string, number> = {};
+    workingDays.forEach(d => {
+      load[d] = new Set(teacherEntries.filter(e => e.day === d).map(e => e.periodIndex)).size;
+    });
+    return load;
+  }, [workingDays, teacherEntries]);
 
   const combinedHinduTeacherId = getCombinedHinduTeacherId(teachers, settings, subjects);
   let configuredTargetPeriods = 0;
@@ -226,8 +284,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
               className="w-full min-h-[42px] py-2 px-3 text-xs bg-[#f7f5f0] dark:bg-slate-800 border border-stone-200 dark:border-slate-700 rounded-xl text-stone-900 dark:text-slate-100 font-semibold focus:outline-none"
             >
               {filteredTeachers.map(t => {
-                const tEntries = entries.filter(en => en.teacherId === t.id);
-                const tCount = new Set(tEntries.map(en => `${en.day}_${en.periodIndex}`)).size;
+                const tCount = teacherPhysicalCountMap.get(t.id) || 0;
                 return (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.initials}) · {tCount} পিরিয়ড
@@ -383,8 +440,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {teachers.map(t => {
                 const isSelected = t.id === selectedTeacher?.id;
-                const tEntries = entries.filter(e => e.teacherId === t.id);
-                const tCount = new Set(tEntries.map(e => `${e.day}_${e.periodIndex}`)).size;
+                const tCount = teacherPhysicalCountMap.get(t.id) || 0;
                 return (
                   <button
                     key={t.id}
@@ -567,6 +623,8 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                       </span>
                       <span>·</span>
                       <span>Max Consecutive: {selectedTeacher.maxConsecutivePeriods || 2}</span>
+                      <span>·</span>
+                      <span>Max Days/Wk: {selectedTeacher.maxWorkingDays || 4}</span>
                     </div>
                   </div>
                 </div>
@@ -618,10 +676,10 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
             const curWin = liveStatus.currentWindow;
             const nextWin = liveStatus.nextWindow;
             const curMatches = curWin
-              ? teacherEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === curWin.period.periodIndex)
+              ? teacherSlotMap.get(`${liveStatus.todayEnum}_${curWin.period.periodIndex}`) || []
               : [];
             const nextMatches = nextWin
-              ? teacherEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === nextWin.period.periodIndex)
+              ? teacherSlotMap.get(`${liveStatus.todayEnum}_${nextWin.period.periodIndex}`) || []
               : [];
 
             const formatTeacherSlotSummary = (matches: TimetableEntry[]) => {
@@ -822,9 +880,8 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                 );
               }
 
-              const slotMatches = teacherEntries.filter(
-                e => e.day === activeMobileDay && e.periodIndex === period.periodIndex
-              );
+              const slotMatches =
+                teacherSlotMap.get(`${activeMobileDay}_${period.periodIndex}`) || [];
               const primaryColor = slotMatches[0] ? subjectMap.get(slotMatches[0].subjectId)?.color || '#145343' : undefined;
 
               return (
@@ -967,7 +1024,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                     const cls = classMap.get(entry.classId);
                     const sec = cls?.sections.find(s => s.id === entry.sectionId);
                     const sub = subjectMap.get(entry.subjectId);
-                    const hasConflict = teacherConflicts.some(c => c.entryIds.includes(entry.id));
+                    const hasConflict = conflictEntryIdSet.has(entry.id);
 
                     return (
                       <tr
@@ -1092,12 +1149,9 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                         );
                       }
 
-                      const slotMatches = teacherEntries.filter(
-                        e => e.day === day && e.periodIndex === period.periodIndex
-                      );
-                      const hasConflict = slotMatches.some(m =>
-                        teacherConflicts.some(c => c.entryIds.includes(m.id))
-                      );
+                      const slotMatches =
+                        teacherSlotMap.get(`${day}_${period.periodIndex}`) || [];
+                      const hasConflict = slotMatches.some(m => conflictEntryIdSet.has(m.id));
 
                       if (slotMatches.length === 0) {
                         return (

@@ -55,7 +55,7 @@ interface ComplianceAuditPanelProps {
   onSelectClassSection: (classId: string, sectionId: string) => void;
 }
 
-export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
+export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.memo(({
   classes,
   teachers,
   subjects,
@@ -74,6 +74,22 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
   const [auditTab, setAuditTab] = useState<'quota' | 'unassigned' | 'conflicts' | 'capacity'>('quota');
   const [conflictTypeFilter, setConflictTypeFilter] = useState<'all' | 'teacher_limit_exceeded' | 'other'>('all');
   const [isFixing, setIsFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+
+  const runSafeAutoFix = () => {
+    if (!onAutoFixRoutine) return;
+    setFixError(null);
+    setIsFixing(true);
+    setTimeout(() => {
+      try {
+        onAutoFixRoutine();
+      } catch (err: any) {
+        setFixError(err?.message || 'অটো-ফিক্স সম্পন্ন করতে সমস্যা হয়েছে।');
+      } finally {
+        setIsFixing(false);
+      }
+    }, 50);
+  };
 
   const verification = useMemo(
     () =>
@@ -103,7 +119,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
       const activeDays = vDetail?.activeDays ?? new Set(rawEntries.map(e => e.day)).size;
       const isHindu = isHinduReligionTeacher(teacher, subjects);
       const isAgr = isAgricultureTeacher(teacher, subjects);
-      const workload = computeTeacherWorkload(teacher, entries, proxyLogs, { workingDays });
+      const workload = computeTeacherWorkload(teacher, entries, proxyLogs, { workingDays, settings });
 
       return {
         teacher,
@@ -117,7 +133,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
         workload,
       };
     });
-  }, [teachers, entries, proxyLogs, workingDays, subjects, verification.teacherDetails]);
+  }, [teachers, entries, proxyLogs, workingDays, subjects, settings, verification.teacherDetails]);
 
   // 2. Live Section Capacity Audit (Curriculum periods vs Open Timetable Slots)
   const sectionCapacityRows = useMemo(() => {
@@ -279,7 +295,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
     return teachers
       .filter(t => (conflictCountByTeacher.get(t.id) || 0) > 0)
       .map(teacher => {
-        const maxDaily = getTeacherDailyMax(teacher);
+        const maxDaily = getTeacherDailyMax(teacher, settings);
         const dayCounts = workingDays.map(day => {
           const slots = new Set<number>();
           entries.forEach(e => {
@@ -316,7 +332,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
         };
       })
       .sort((a, b) => b.violationCount - a.violationCount);
-  }, [teachers, entries, workingDays, limitConflicts, verification.teacherDetails]);
+  }, [teachers, entries, workingDays, limitConflicts, verification.teacherDetails, settings]);
 
   const handleOpenCheckTarget = (checkId: string) => {
     if (checkId === 'fv-limits' || checkId === 'chk-teacher-limits') {
@@ -381,14 +397,8 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
               <button
                 type="button"
                 disabled={isFixing}
-                onClick={() => {
-                  setIsFixing(true);
-                  setTimeout(() => {
-                    onAutoFixRoutine();
-                    setIsFixing(false);
-                  }, 50);
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-60"
+                onClick={runSafeAutoFix}
+                className="min-h-[40px] px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-60"
               >
                 <Wrench className="w-3.5 h-3.5" />
                 <span>{isFixing ? 'Fixing...' : 'Auto Fix Routine'}</span>
@@ -397,13 +407,87 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
             <button
               type="button"
               onClick={onOpenAutoGenerate}
-              className="px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center gap-1.5 transition-colors"
+              className="min-h-[40px] px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center gap-1.5 transition-colors"
             >
               <Wand2 className="w-3.5 h-3.5" />
               <span>Auto-Resolve & Regenerate</span>
             </button>
           </div>
         </div>
+
+        {fixError && (
+          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between gap-2">
+            <span>{fixError}</span>
+            <button
+              type="button"
+              onClick={() => setFixError(null)}
+              className="underline font-semibold shrink-0"
+            >
+              বন্ধ করুন
+            </button>
+          </div>
+        )}
+
+        {/* 13-Point Comprehensive System Health & Validation Report */}
+        {verification.systemHealthReport && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-4 py-2.5 bg-[#eef5f2] dark:bg-emerald-950/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <span className="text-xs font-bold text-[#145343] dark:text-emerald-200">
+                  System Health &amp; Validation Report (১৩-দফা সম্পূর্ণ সিস্টেম অডিট)
+                </span>
+                <span className="ml-2 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                  PASS: {verification.systemHealthReport.passCount} · WARN: {verification.systemHealthReport.warningCount} · FAIL: {verification.systemHealthReport.failCount}
+                </span>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                  verification.systemHealthReport.overallStatus === 'PASS'
+                    ? 'bg-[#145343] text-white'
+                    : verification.systemHealthReport.overallStatus === 'WARNING'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-rose-600 text-white'
+                }`}
+              >
+                {verification.systemHealthReport.overallStatus}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3 bg-white dark:bg-slate-900">
+              {verification.systemHealthReport.items.map(item => (
+                <div
+                  key={item.id}
+                  className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1 ${
+                    item.status === 'PASS'
+                      ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/35 dark:bg-emerald-950/15'
+                      : item.status === 'WARNING'
+                      ? 'border-amber-200 dark:border-amber-900/60 bg-amber-50/45 dark:bg-amber-950/20'
+                      : 'border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/25'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {item.label}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono tabular-nums shrink-0 ${
+                        item.status === 'PASS'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200'
+                          : item.status === 'WARNING'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/70 dark:text-amber-200'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-900/70 dark:text-rose-200'
+                      }`}
+                    >
+                      {item.status} · {item.valueText}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                    {item.detail}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 8-Point Final Validation Statuses */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -991,14 +1075,8 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
                         <button
                           type="button"
                           disabled={isFixing}
-                          onClick={() => {
-                            setIsFixing(true);
-                            setTimeout(() => {
-                              onAutoFixRoutine();
-                              setIsFixing(false);
-                            }, 50);
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-700 hover:bg-emerald-800 text-white transition-colors disabled:opacity-60"
+                          onClick={runSafeAutoFix}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-[#145343] hover:bg-[#0f3f33] text-white transition-colors disabled:opacity-60"
                         >
                           {isFixing ? 'Rebalancing...' : 'Auto Fix / Rebalance করুন'}
                         </button>
@@ -1159,4 +1237,5 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = ({
       )}
     </div>
   );
-};
+});
+ComplianceAuditPanel.displayName = 'ComplianceAuditPanel';

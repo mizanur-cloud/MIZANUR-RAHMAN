@@ -170,50 +170,51 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                 </div>
               </div>
 
-              {/* Highlight Banner: 1-Click APK Download & Android Install */}
-              <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              {/* Highlight Banner: 1-Click PWA Web App Install */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-[#145343] to-[#0f3f33] text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-white shrink-0"></span>
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      আইডিএসসি রুটিন (Android APK) ডাউনলোড
+                    <Smartphone className="w-5 h-5 text-[#d4a34a] shrink-0" />
+                    <h3 className="text-lg font-bold text-white">
+                      আইডিএসসি স্মার্ট রুটিন (PWA অ্যাপ) ইনস্টল
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider">
-                      APK Ready
-                    </span>
                   </div>
                   <p className="text-xs text-emerald-100 max-w-xl">
-                    অ্যাপের নাম: <strong>আইডিএসসি রুটিন</strong> · লোগো: <strong>আইকন ড্রিমস</strong>। নিচের বাটনে ক্লিক করে সরাসরি <strong>IDSC_Routine.apk</strong> ফাইলটি ডাউনলোড করে আপনার অ্যান্ড্রয়েড ফোনে ইনস্টল করুন।
+                    অ্যান্ড্রয়েড, আইফোন বা কম্পিউটারে ব্রাউজারের ঝামেলা ছাড়াই সরাসরি পূর্ণাঙ্গ অ্যাপ হিসেবে ব্যবহার করুন। রুটিন ও প্রক্সি আপডেট স্বয়ংক্রিয়ভাবে সিঙ্ক হয়।
                   </p>
-                  <div className="flex items-center gap-3 pt-1 text-[11px] text-emerald-200">
-                    <span>ফাইলের নাম: <strong>IDSC_Routine.apk</strong></span>
+                  <div className="flex items-center gap-3 pt-1 text-[11px] text-emerald-200 flex-wrap">
+                    <span>অ্যাপ: <strong>IDSC Smart Routine</strong></span>
                     <span>•</span>
-                    <span>সাইজ: <strong>৩.৯ KB</strong></span>
+                    <span>স্টোরেজ: <strong>অত্যন্ত হালকা (PWA)</strong></span>
                     <span>•</span>
-                    <span>প্যাকেজ: <strong>com.icondreams.idscroutine</strong></span>
+                    <span>প্যাকেজ গাইড: <strong>PWABuilder Ready</strong></span>
                   </div>
                 </div>
 
                 <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
-                  {/* Direct APK Download Link */}
-                  <a
-                    href="/IDSC_Routine.apk"
-                    download="IDSC_Routine.apk"
-                    className="px-5 py-2.5 bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4 text-emerald-700" />
-                    <span>ডাউনলোড APK ফাইল</span>
-                  </a>
-
-                  {/* 1-Click PWA Install */}
-                  {isInstallable && (
+                  {isInstalled ? (
+                    <div className="px-4 py-2.5 bg-white/15 border border-white/25 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-[#d4a34a]" />
+                      <span>অ্যাপ ইতোমধ্যেই ইনস্টল করা আছে</span>
+                    </div>
+                  ) : isInstallable ? (
                     <button
-                      onClick={install}
-                      className="px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                      type="button"
+                      onClick={() => void install()}
+                      className="px-5 py-2.5 bg-white text-[#145343] hover:bg-emerald-50 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 min-h-[44px]"
                     >
-                      <Smartphone className="w-4 h-4" />
-                      <span>১-ক্লিকে ইনস্টল</span>
+                      <Download className="w-4 h-4 text-[#145343]" />
+                      <span>১-ক্লিকে অ্যাপ ইনস্টল করুন</span>
                     </button>
+                  ) : (
+                    <div className="px-4 py-2.5 bg-white/15 border border-white/25 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2">
+                      <Smartphone className="w-4 h-4 text-[#d4a34a]" />
+                      <span>
+                        {isIOS
+                          ? 'Safari Share → Add to Home Screen ব্যবহার করুন'
+                          : 'ব্রাউজার মেনু (⋮) → Install App ব্যবহার করুন'}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>

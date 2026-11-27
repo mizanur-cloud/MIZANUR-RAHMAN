@@ -8,7 +8,6 @@ import {
   Printer,
   Globe,
   Check,
-  Smartphone,
   HelpCircle,
   ShieldCheck,
   AlertTriangle,
@@ -204,22 +203,13 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               <span className="truncate">{copiedShareLink ? 'লিংক কপি হয়েছে!' : 'Copy Share Link'}</span>
             </button>
 
-            <a
-              href="/IDSC_Routine.apk"
-              download="IDSC_Routine.apk"
-              className="w-full px-2.5 py-2 text-xs font-medium text-stone-700 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
-            >
-              <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-              <span className="truncate">Download Android APK</span>
-            </a>
-
             <button
               type="button"
               onClick={onOpenHelpAndInstall}
               className="w-full px-2.5 py-2 text-xs font-medium text-stone-700 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-slate-800/80 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
             >
               <HelpCircle className="w-4 h-4 text-stone-500 dark:text-slate-400 shrink-0" />
-              <span className="truncate">User Guide & Install</span>
+              <span className="truncate">User Guide & App Install</span>
             </button>
           </div>
 

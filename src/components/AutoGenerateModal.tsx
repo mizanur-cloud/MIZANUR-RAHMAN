@@ -40,22 +40,29 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
   const [maxConsecutive, setMaxConsecutive] = useState<number>(2);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleGenerate = () => {
+    setErrorMessage(null);
     setIsProcessing(true);
     setTimeout(() => {
-      const result = onExecuteGenerate({
-        scope,
-        targetClassId: currentClass?.id,
-        targetSectionId: currentSection?.id,
-        preserveLockedEntries: preserveLocked,
-        maxConsecutiveLimit: maxConsecutive,
-      });
-      setIsProcessing(false);
-      setGenerationResult(result);
-    }, 200);
+      try {
+        const result = onExecuteGenerate({
+          scope,
+          targetClassId: currentClass?.id,
+          targetSectionId: currentSection?.id,
+          preserveLockedEntries: preserveLocked,
+          maxConsecutiveLimit: maxConsecutive,
+        });
+        setGenerationResult(result);
+      } catch (err: any) {
+        setErrorMessage(err?.message || 'রুটিন তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      } finally {
+        setIsProcessing(false);
+      }
+    }, 120);
   };
 
   const verification = generationResult?.verification;
@@ -98,6 +105,18 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5">
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between gap-2">
+              <span>{errorMessage}</span>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="font-semibold underline shrink-0"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          )}
           {generationResult && verification ? (
             /* Final Routine Verification Dashboard */
             <div className="space-y-5">
@@ -563,7 +582,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
+                  className="min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -571,7 +590,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                   type="button"
                   onClick={handleGenerate}
                   disabled={isProcessing}
-                  className="px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-2 shadow-xs disabled:opacity-50"
+                  className="min-h-[44px] px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-2 shadow-xs disabled:opacity-50"
                 >
                   <Wand2 className="w-4 h-4" />
                   <span>{isProcessing ? 'Generating...' : 'Start Auto-Generation'}</span>

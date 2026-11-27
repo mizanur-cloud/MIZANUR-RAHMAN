@@ -349,6 +349,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
         entries,
         proxyLogs,
         ignoreEntryId: existingEntry?.id,
+        settings,
       })
     : null;
   const requiresWorkloadOverride = Boolean(
@@ -433,6 +434,15 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
   const canAddParallelPartner = !isPlayNur && slotEntries.length === 1 && Boolean(parallelPartnerId);
   const parallelPartnerSub = parallelPartnerId ? subjects.find(s => s.id === parallelPartnerId) : null;
 
+  const requiresAnyOverride = Boolean(
+    !blockTeacherViolation &&
+      (requiresWorkloadOverride ||
+        (teacherWorkloadEval && teacherWorkloadEval.warnings.length > 0) ||
+        fixedPeriodViolation ||
+        teacherBlockedAtSlot ||
+        Boolean(teacherClashEntry))
+  );
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSubjectId || !selectedTeacherId) return;
@@ -441,7 +451,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
       unselectedSubjectViolation ||
       sameDaySubjectConflict ||
       weeklyOverQuotaViolation ||
-      (requiresWorkloadOverride && !overrideConfirmed)
+      (requiresAnyOverride && !overrideConfirmed)
     ) {
       return;
     }
@@ -753,7 +763,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                   </div>
                 </div>
 
-                {requiresWorkloadOverride && (
+                {requiresAnyOverride && (
                   <label className="flex items-start gap-2 pt-1.5 border-t border-rose-200/80 dark:border-rose-800/60 text-xs font-semibold text-rose-900 dark:text-rose-100 cursor-pointer">
                     <input
                       type="checkbox"
@@ -761,10 +771,21 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                       onChange={e => setOverrideConfirmed(e.target.checked)}
                       className="mt-0.5 rounded text-rose-600 focus:ring-rose-500"
                     />
-                    <span>লিমিট অতিক্রম করার পরেও এডমিন ওভাররাইড হিসেবে সংরক্ষণ করতে সম্মত</span>
+                    <span>লিমিট/সতর্কতা অতিক্রম করার পরেও এডমিন ওভাররাইড হিসেবে সংরক্ষণ করতে সম্মত</span>
                   </label>
                 )}
               </div>
+            )}
+            {requiresAnyOverride && (!teacherWorkloadEval || teacherWorkloadEval.warnings.filter(w => w.code !== 'blocked_slot').length === 0) && (
+              <label className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-start gap-2 text-xs font-semibold text-amber-900 dark:text-amber-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={overrideConfirmed}
+                  onChange={e => setOverrideConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded text-amber-600 focus:ring-amber-500"
+                />
+                <span>উপরের সতর্কতা যাচাই করে এডমিন ওভাররাইড হিসেবে সংরক্ষণ করতে সম্মত</span>
+              </label>
             )}
           </div>
 
@@ -866,7 +887,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
+                className="min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -877,9 +898,9 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({
                   unselectedSubjectViolation ||
                   sameDaySubjectConflict ||
                   weeklyOverQuotaViolation ||
-                  (requiresWorkloadOverride && !overrideConfirmed)
+                  (requiresAnyOverride && !overrideConfirmed)
                 }
-                className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                className="min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] disabled:opacity-50 dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
               >
                 <Check className="w-4 h-4" />
                 <span>Save & Sync</span>

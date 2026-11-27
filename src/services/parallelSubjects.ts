@@ -157,7 +157,7 @@ export function isHinduReligionTeacher(teacher: Teacher, subjects?: Subject[]): 
   ) {
     return true;
   }
-  return teacher.subjectIds.some(sId => isHinduReligionSubject(sId, subjects));
+  return (teacher.subjectIds || []).some(sId => isHinduReligionSubject(sId, subjects));
 }
 
 export function getCombinedHinduTeacherId(
@@ -189,7 +189,7 @@ export function isAgricultureTeacher(teacher: Teacher, subjects?: Subject[]): bo
   ) {
     return true;
   }
-  return teacher.subjectIds.some(sId => isAgricultureSubject(sId, subjects));
+  return (teacher.subjectIds || []).some(sId => isAgricultureSubject(sId, subjects));
 }
 
 /**

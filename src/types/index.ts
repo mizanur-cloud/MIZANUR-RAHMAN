@@ -38,7 +38,8 @@ export interface Teacher {
   subjectIds: string[]; // subjects qualified to teach
   assignedClassSections?: TeacherClassAssignment[]; // classes & sections this teacher teaches
   maxConsecutivePeriods: number; // default 2
-  maxDailyPeriods: number;       // default 4 or 5
+  maxDailyPeriods: number;       // default 4
+  maxWorkingDays?: number;       // default 5 working days per week
   maxWeeklyPeriods?: number;     // default 24 (Regular + Proxy combined weekly limit)
   unavailableSlots?: { day: DayOfWeek; periodIndex: number }[];
   unavailablePeriods?: number[]; // Period indices blocked across ALL working days (e.g. [1, 7])
@@ -111,6 +112,8 @@ export interface SchoolSettings {
   workingDays: DayOfWeek[];
   periodTimings: PeriodTiming[];
   religionSchedule?: ReligionScheduleSettings;
+  defaultMaxDailyPeriods?: number;
+  defaultMaxWorkingDays?: number;
 }
 
 export type ConflictType =
@@ -123,7 +126,23 @@ export type ConflictType =
   | 'teacher_unavailable'
   | 'subject_fixed_period'
   | 'unselected_subject'
-  | 'teacher_limit_exceeded';
+  | 'teacher_limit_exceeded'
+  | 'teacher_working_days_exceeded'
+  | 'consecutive_pattern_exceeded';
+
+export interface RoutineSnapshot {
+  id: string;
+  createdAt: string;
+  label: string;
+  entryCount: number;
+  state: {
+    classes: SchoolClass[];
+    teachers: Teacher[];
+    subjects: Subject[];
+    settings: SchoolSettings;
+    entries: TimetableEntry[];
+  };
+}
 
 export interface RoutineConflict {
   id: string;

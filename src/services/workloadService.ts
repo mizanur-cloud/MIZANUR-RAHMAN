@@ -1,6 +1,7 @@
 import {
   DayOfWeek,
   ProxyLogEntry,
+  SchoolSettings,
   Teacher,
   TimetableEntry,
 } from '../types';
@@ -12,6 +13,7 @@ export interface WorkloadWarning {
     | 'weekly_exceeded'
     | 'weekly_near'
     | 'daily_exceeded'
+    | 'daily_proxy_limit_exceeded'
     | 'consecutive_exceeded'
     | 'time_clash'
     | 'absent_on_date'
@@ -64,8 +66,13 @@ const DAY_NAMES_BY_JS_DAY: DayOfWeek[] = [
 ];
 
 export const DEFAULT_WEEKLY_MAX_PERIODS = 24;
-export const DEFAULT_DAILY_MAX_PERIODS = 5;
+export const DEFAULT_DAILY_MAX_PERIODS = 4;
+export const DEFAULT_WEEKLY_MAX_WORKING_DAYS = 5;
+export const DEFAULT_MAX_WORKING_DAYS = DEFAULT_WEEKLY_MAX_WORKING_DAYS;
 export const DEFAULT_CONSECUTIVE_MAX_PERIODS = 2;
+export const MAX_CONSECUTIVE_HARD_LIMIT = 3; // 4+ strictly forbidden
+export const MAX_UNAVOIDABLE_THREE_CONSECUTIVE_DAYS = 2;
+export const MAX_DAILY_PROXY_PERIODS = 1;
 
 export function getLocalDateStr(date: Date = new Date()): string {
   const y = date.getFullYear();
@@ -113,16 +120,136 @@ export function getTeacherWeeklyMax(teacher: Teacher): number {
     : DEFAULT_WEEKLY_MAX_PERIODS;
 }
 
-export function getTeacherDailyMax(teacher: Teacher): number {
-  return typeof teacher.maxDailyPeriods === 'number' && teacher.maxDailyPeriods > 0
-    ? teacher.maxDailyPeriods
-    : DEFAULT_DAILY_MAX_PERIODS;
+export function getTeacherDailyMax(teacher: Teacher, settings?: SchoolSettings): number {
+  if (typeof teacher.maxDailyPeriods === 'number' && teacher.maxDailyPeriods > 0) {
+    return teacher.maxDailyPeriods;
+  }
+  if (typeof settings?.defaultMaxDailyPeriods === 'number' && settings.defaultMaxDailyPeriods > 0) {
+    return settings.defaultMaxDailyPeriods;
+  }
+  return DEFAULT_DAILY_MAX_PERIODS;
 }
 
 export function getTeacherConsecutiveMax(teacher: Teacher): number {
   return typeof teacher.maxConsecutivePeriods === 'number' && teacher.maxConsecutivePeriods > 0
     ? teacher.maxConsecutivePeriods
     : DEFAULT_CONSECUTIVE_MAX_PERIODS;
+}
+
+export function getTeacherMaxWorkingDays(teacher: Teacher, settings?: SchoolSettings): number {
+  if (typeof teacher.maxWorkingDays === 'number' && teacher.maxWorkingDays >= 1) {
+    return Math.min(7, Math.floor(teacher.maxWorkingDays));
+  }
+  if (typeof settings?.defaultMaxWorkingDays === 'number' && settings.defaultMaxWorkingDays >= 1) {
+    return Math.min(7, Math.floor(settings.defaultMaxWorkingDays));
+  }
+  return DEFAULT_WEEKLY_MAX_WORKING_DAYS;
+}
+
+export interface TeacherDayPattern {
+  day: DayOfWeek;
+  count: number;
+  maxRun: number;
+  periods: number[];
+}
+
+export interface TeacherWeeklyPatternAnalysis {
+  activeWorkingDays: number;
+  maxWorkingDays: number;
+  dailyMax: number;
+  physicalPeriods: number;
+  effectiveRequiredPeriods: number;
+  workingDaysExceeded: boolean;
+  mathematicallyImpossibleWorkingDays: boolean;
+  threeConsecDays: DayOfWeek[];
+  fourPlusConsecDays: DayOfWeek[];
+  maxConsecObserved: number;
+  unbalancedDays: boolean;
+  dayPatterns: TeacherDayPattern[];
+}
+
+export function analyzeTeacherWeeklyPattern(
+  teacher: Teacher,
+  entries: TimetableEntry[],
+  workingDays: DayOfWeek[],
+  requiredPeriods?: number,
+  maxSingleSectionSubjectFreq?: number,
+  settings?: SchoolSettings
+): TeacherWeeklyPatternAnalysis {
+  const maxWorkingDays = getTeacherMaxWorkingDays(teacher, settings);
+  const dailyMax = getTeacherDailyMax(teacher, settings);
+  const periodsByDay = new Map<DayOfWeek, Set<number>>();
+  workingDays.forEach(d => periodsByDay.set(d, new Set<number>()));
+
+  for (const e of entries) {
+    if (e.teacherId !== teacher.id) continue;
+    let set = periodsByDay.get(e.day);
+    if (!set) {
+      set = new Set<number>();
+      periodsByDay.set(e.day, set);
+    }
+    set.add(e.periodIndex);
+  }
+
+  const dayPatterns: TeacherDayPattern[] = [];
+  const threeConsecDays: DayOfWeek[] = [];
+  const fourPlusConsecDays: DayOfWeek[] = [];
+  let maxConsecObserved = 0;
+  let physicalPeriods = 0;
+  const activeCounts: number[] = [];
+
+  for (const day of workingDays) {
+    const sorted = Array.from(periodsByDay.get(day) || []).sort((a, b) => a - b);
+    physicalPeriods += sorted.length;
+    if (sorted.length > 0) activeCounts.push(sorted.length);
+
+    let maxRun = sorted.length > 0 ? 1 : 0;
+    let run = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] === sorted[i - 1] + 1) {
+        run++;
+        if (run > maxRun) maxRun = run;
+      } else {
+        run = 1;
+      }
+    }
+
+    if (maxRun > maxConsecObserved) maxConsecObserved = maxRun;
+    if (maxRun === 3) threeConsecDays.push(day);
+    if (maxRun >= 4) fourPlusConsecDays.push(day);
+
+    dayPatterns.push({
+      day,
+      count: sorted.length,
+      maxRun,
+      periods: sorted,
+    });
+  }
+
+  const activeWorkingDays = activeCounts.length;
+  const effectiveRequiredPeriods = Math.max(physicalPeriods, requiredPeriods ?? physicalPeriods);
+  const exceedsByDailyCap = effectiveRequiredPeriods > maxWorkingDays * dailyMax;
+  const exceedsBySingleSubFreq = (maxSingleSectionSubjectFreq ?? 0) > maxWorkingDays;
+  const mathematicallyImpossibleWorkingDays = exceedsByDailyCap || exceedsBySingleSubFreq;
+  const workingDaysExceeded = activeWorkingDays > maxWorkingDays;
+  const unbalancedDays =
+    activeCounts.length >= 2 &&
+    Math.max(...activeCounts) - Math.min(...activeCounts) > 1;
+
+  return {
+    activeWorkingDays,
+    maxWorkingDays,
+    dailyMax,
+    physicalPeriods,
+    effectiveRequiredPeriods,
+    workingDaysExceeded,
+    mathematicallyImpossibleWorkingDays,
+    threeConsecDays,
+    fourPlusConsecDays,
+    maxConsecObserved,
+    unbalancedDays,
+    dayPatterns,
+  };
 }
 
 /**
@@ -222,6 +349,7 @@ export function computeTeacherWorkload(
     targetDate?: string;
     targetDay?: DayOfWeek;
     workingDays?: DayOfWeek[];
+    settings?: SchoolSettings;
   } = {}
 ): TeacherWorkloadSummary {
   const targetDate = options.targetDate || getLocalDateStr();
@@ -235,7 +363,7 @@ export function computeTeacherWorkload(
   ];
 
   const weeklyMax = getTeacherWeeklyMax(teacher);
-  const dailyMax = getTeacherDailyMax(teacher);
+  const dailyMax = getTeacherDailyMax(teacher, options.settings);
   const consecutiveMax = getTeacherConsecutiveMax(teacher);
 
   const regularWeeklyPeriods = countRegularWeeklySlots(teacher.id, entries);
@@ -324,6 +452,7 @@ export function evaluateAssignmentLimits(params: {
   absentTeacherIdsOnDate?: string[];
   ignoreEntryId?: string;
   ignoreProxyLogId?: string;
+  settings?: SchoolSettings;
 }): AssignmentLimitEvaluation {
   const {
     mode,
@@ -336,6 +465,7 @@ export function evaluateAssignmentLimits(params: {
     absentTeacherIdsOnDate = [],
     ignoreEntryId,
     ignoreProxyLogId,
+    settings,
   } = params;
 
   const filteredEntries = ignoreEntryId
@@ -348,6 +478,7 @@ export function evaluateAssignmentLimits(params: {
   const summary = computeTeacherWorkload(teacher, filteredEntries, filteredProxies, {
     targetDate: date,
     targetDay: day,
+    settings,
   });
 
   const warnings: WorkloadWarning[] = [];
@@ -383,6 +514,20 @@ export function evaluateAssignmentLimits(params: {
         ? `${teacher.name}-এর ${day} (Period ${periodIndex})-এ নিয়মিত ক্লাস রয়েছে (Time Clash)।`
         : `${teacher.name}-এর ${date} (Period ${periodIndex})-এ ইতোমধ্যেই আরেকটি প্রক্সি ক্লাস বরাদ্দ রয়েছে।`,
     });
+  }
+
+  if (mode === 'proxy' && !hasProxyAtSlot) {
+    const existingProxyOnDate = filteredProxies.find(
+      p => p.status !== 'cancelled' && p.proxyTeacherId === teacher.id && p.date === date
+    );
+    if (existingProxyOnDate) {
+      hasHardClash = true;
+      warnings.push({
+        code: 'daily_proxy_limit_exceeded',
+        severity: 'error',
+        message: `${teacher.name}-কে ${date} তারিখে ইতোমধ্যেই ১টি প্রক্সি ক্লাস (${existingProxyOnDate.className}, P${existingProxyOnDate.periodIndex}) দেওয়া হয়েছে। একজন শিক্ষককে দিনে ১টির বেশি প্রক্সি ক্লাস দেওয়া যাবে না।`,
+      });
+    }
   }
 
   const slotBlockedByTeacher =

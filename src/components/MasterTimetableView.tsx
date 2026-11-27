@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
@@ -52,31 +52,55 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
     return curIdx ?? activePeriods[0]?.periodIndex ?? 1;
   });
 
-  const subjectMap = new Map(subjects.map(s => [s.id, s]));
-  const teacherMap = new Map(teachers.map(t => [t.id, t]));
-  const classMap = new Map(classes.map(c => [c.id, c]));
+  const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s])), [subjects]);
+  const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t])), [teachers]);
+  const classMap = useMemo(() => new Map(classes.map(c => [c.id, c])), [classes]);
 
   const allDisplayPeriods = periodTimings;
 
-  // Flatten all class sections
-  const allSections: { classObj: SchoolClass; sectionId: string; sectionName: string }[] = [];
-  classes.forEach(c => {
-    c.sections.forEach(s => {
-      allSections.push({ classObj: c, sectionId: s.id, sectionName: s.name });
+  const allSections = useMemo(() => {
+    const flat: { classObj: SchoolClass; sectionId: string; sectionName: string }[] = [];
+    classes.forEach(c => {
+      c.sections.forEach(s => {
+        flat.push({ classObj: c, sectionId: s.id, sectionName: s.name });
+      });
     });
-  });
+    return flat;
+  }, [classes]);
+
+  const { sectionSlotMap, teacherPeriodMap } = useMemo(() => {
+    const secMap = new Map<string, TimetableEntry[]>();
+    const tchMap = new Map<string, TimetableEntry>();
+    for (const e of entries) {
+      if (e.day !== selectedDay) continue;
+      const sKey = `${e.classId}_${e.sectionId}_${e.periodIndex}`;
+      const list = secMap.get(sKey);
+      if (list) list.push(e);
+      else secMap.set(sKey, [e]);
+
+      const tKey = `${e.teacherId}_${e.periodIndex}`;
+      if (!tchMap.has(tKey)) {
+        tchMap.set(tKey, e);
+      }
+    }
+    return { sectionSlotMap: secMap, teacherPeriodMap: tchMap };
+  }, [entries, selectedDay]);
 
   // Calculate curriculum required periods across all sections
-  const totalRequiredPeriods = classes.reduce((classAcc, c) => {
-    if (isPlayOrNursery(c)) {
-      const openPeriods = activePeriods.filter(
-        p => !isSlotDismissed(c, workingDays[0] || 'Sunday', p.periodIndex, c.sections[0]?.id, workingDays)
-      ).length;
-      return classAcc + openPeriods * workingDays.length * c.sections.length;
-    }
-    const classReq = c.subjectRequirements.reduce((rAcc, req) => rAcc + req.periodsPerWeek, 0);
-    return classAcc + classReq * c.sections.length;
-  }, 0);
+  const totalRequiredPeriods = useMemo(
+    () =>
+      classes.reduce((classAcc, c) => {
+        if (isPlayOrNursery(c)) {
+          const openPeriods = activePeriods.filter(
+            p => !isSlotDismissed(c, workingDays[0] || 'Sunday', p.periodIndex, c.sections[0]?.id, workingDays)
+          ).length;
+          return classAcc + openPeriods * workingDays.length * c.sections.length;
+        }
+        const classReq = c.subjectRequirements.reduce((rAcc, req) => rAcc + req.periodsPerWeek, 0);
+        return classAcc + classReq * c.sections.length;
+      }, 0),
+    [classes, activePeriods, workingDays]
+  );
 
   // Total possible timetable slots in school grid
   const totalPossibleSlots = allSections.length * workingDays.length * activePeriods.length;
@@ -89,10 +113,14 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
 
   // Teacher utilization percentage:
   // Each teacher has a standard weekly target capacity: (maxDailyPeriods || 5) * workingDays.length
-  const totalTeacherCapacity = teachers.reduce((acc, t) => {
-    const dailyCap = typeof t.maxDailyPeriods === 'number' && t.maxDailyPeriods > 0 ? t.maxDailyPeriods : 5;
-    return acc + dailyCap * workingDays.length;
-  }, 0);
+  const totalTeacherCapacity = useMemo(
+    () =>
+      teachers.reduce((acc, t) => {
+        const dailyCap = typeof t.maxDailyPeriods === 'number' && t.maxDailyPeriods > 0 ? t.maxDailyPeriods : 5;
+        return acc + dailyCap * workingDays.length;
+      }, 0),
+    [teachers, workingDays.length]
+  );
 
   const teacherUtilizationPct =
     totalTeacherCapacity > 0
@@ -100,7 +128,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
       : 0;
 
   // Active teachers with at least 1 assigned class
-  const activeTeachersCount = new Set(entries.map(e => e.teacherId)).size;
+  const activeTeachersCount = useMemo(() => new Set(entries.map(e => e.teacherId)).size, [entries]);
 
   const activeMobilePeriod =
     activePeriods.find(p => p.periodIndex === selectedMobilePeriod) || activePeriods[0];
@@ -436,13 +464,10 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                       sectionId,
                       workingDays
                     );
-                    const matches = entries.filter(
-                      e =>
-                        e.day === selectedDay &&
-                        e.classId === classObj.id &&
-                        e.sectionId === sectionId &&
-                        e.periodIndex === activeMobilePeriod.periodIndex
-                    );
+                    const matches =
+                      sectionSlotMap.get(
+                        `${classObj.id}_${sectionId}_${activeMobilePeriod.periodIndex}`
+                      ) || [];
 
                     return (
                       <div
@@ -491,11 +516,8 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                     );
                   })
                 : teachers.map(teacher => {
-                    const match = entries.find(
-                      e =>
-                        e.day === selectedDay &&
-                        e.teacherId === teacher.id &&
-                        e.periodIndex === activeMobilePeriod.periodIndex
+                    const match = teacherPeriodMap.get(
+                      `${teacher.id}_${activeMobilePeriod.periodIndex}`
                     );
                     const cls = match ? classMap.get(match.classId) : null;
                     const sec = cls?.sections.find(s => s.id === match?.sectionId);
@@ -583,9 +605,6 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
               {pivotMode === 'byClass'
                 ? allSections.map(({ classObj, sectionId, sectionName }) => {
-                    const rowEntries = entries.filter(
-                      e => e.day === selectedDay && e.classId === classObj.id && e.sectionId === sectionId
-                    );
                     return (
                       <tr
                         key={`${classObj.id}-${sectionId}`}
@@ -627,7 +646,8 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                             );
                           }
 
-                          const matches = rowEntries.filter(e => e.periodIndex === period.periodIndex);
+                          const matches =
+                            sectionSlotMap.get(`${classObj.id}_${sectionId}_${period.periodIndex}`) || [];
 
                           return (
                             <td
@@ -710,10 +730,6 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                     );
                   })
                 : teachers.map(teacher => {
-                    const rowEntries = entries.filter(
-                      e => e.day === selectedDay && e.teacherId === teacher.id
-                    );
-
                     return (
                       <tr
                         key={teacher.id}
@@ -741,7 +757,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                             );
                           }
 
-                          const match = rowEntries.find(e => e.periodIndex === period.periodIndex);
+                          const match = teacherPeriodMap.get(`${teacher.id}_${period.periodIndex}`);
                           const cls = match ? classMap.get(match.classId) : null;
                           const sec = cls?.sections.find(s => s.id === match?.sectionId);
                           const sub = match ? subjectMap.get(match.subjectId) : null;

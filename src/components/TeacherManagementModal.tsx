@@ -4,6 +4,7 @@ import {
   PeriodTiming,
   ProxyLogEntry,
   SchoolClass,
+  SchoolSettings,
   Subject,
   Teacher,
   TeacherClassAssignment,
@@ -15,8 +16,10 @@ import { isAgricultureSubject, isHinduReligionSubject, isTeacherBlockedAtSlot } 
 import {
   computeTeacherWorkload,
   DEFAULT_DAILY_MAX_PERIODS,
+  DEFAULT_MAX_WORKING_DAYS,
   DEFAULT_WEEKLY_MAX_PERIODS,
   getTeacherDailyMax,
+  getTeacherMaxWorkingDays,
   getTeacherWeeklyMax,
 } from '../services/workloadService';
 import {
@@ -46,6 +49,7 @@ interface TeacherManagementModalProps {
   proxyLogs?: ProxyLogEntry[];
   workingDays?: DayOfWeek[];
   periodTimings?: PeriodTiming[];
+  settings?: SchoolSettings;
   onUpdateTeachers: (updated: Teacher[]) => void;
   onUpdateClasses?: (updatedClasses: SchoolClass[]) => void;
   onDeleteTeacher?: (teacherId: string, removeAssignedEntries?: boolean) => void;
@@ -61,6 +65,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   proxyLogs = [],
   workingDays = INITIAL_SETTINGS.workingDays,
   periodTimings = INITIAL_SETTINGS.periodTimings,
+  settings,
   onUpdateTeachers,
   onUpdateClasses,
   onDeleteTeacher,
@@ -85,6 +90,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
   const [maxConsecutive, setMaxConsecutive] = useState<number>(2);
   const [maxDaily, setMaxDaily] = useState<number>(DEFAULT_DAILY_MAX_PERIODS);
   const [maxWeekly, setMaxWeekly] = useState<number>(DEFAULT_WEEKLY_MAX_PERIODS);
+  const [maxWorkingDays, setMaxWorkingDays] = useState<number>(DEFAULT_MAX_WORKING_DAYS);
   const [isBlockTeacher, setIsBlockTeacher] = useState<boolean>(false);
   const [isCoordinator, setIsCoordinator] = useState<boolean>(false);
   const [noProxy, setNoProxy] = useState<boolean>(false);
@@ -117,9 +123,10 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setSelectedSubjectIds(tSubs);
     setAssignmentSubjectId(tSubs[0] || '');
     setAssignedClassSections(teacher.assignedClassSections || []);
-    setMaxConsecutive(teacher.maxConsecutivePeriods || 2);
-    setMaxDaily(getTeacherDailyMax(teacher));
+    setMaxConsecutive(Math.min(3, Math.max(1, teacher.maxConsecutivePeriods || 2)));
+    setMaxDaily(getTeacherDailyMax(teacher, settings));
     setMaxWeekly(getTeacherWeeklyMax(teacher));
+    setMaxWorkingDays(getTeacherMaxWorkingDays(teacher, settings));
     setIsBlockTeacher(Boolean(teacher.isBlockTeacher));
     setIsCoordinator(Boolean(teacher.isCoordinator));
     setNoProxy(Boolean(teacher.noProxy));
@@ -140,8 +147,9 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
     setAssignmentSubjectId(defaultSub);
     setAssignedClassSections([]);
     setMaxConsecutive(2);
-    setMaxDaily(DEFAULT_DAILY_MAX_PERIODS);
+    setMaxDaily(settings?.defaultMaxDailyPeriods ?? DEFAULT_DAILY_MAX_PERIODS);
     setMaxWeekly(DEFAULT_WEEKLY_MAX_PERIODS);
+    setMaxWorkingDays(settings?.defaultMaxWorkingDays ?? DEFAULT_MAX_WORKING_DAYS);
     setIsBlockTeacher(false);
     setIsCoordinator(false);
     setNoProxy(false);
@@ -249,9 +257,10 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         phone: phone.trim() || undefined,
         subjectIds: selectedSubjectIds,
         assignedClassSections: assignedClassSections,
-        maxConsecutivePeriods: maxConsecutive,
+        maxConsecutivePeriods: Math.min(3, Math.max(1, Number(maxConsecutive) || 2)),
         maxDailyPeriods: Math.max(1, Math.min(10, Number(maxDaily) || (isCombinedSpecialist ? 5 : 4))),
         maxWeeklyPeriods: Math.max(1, Math.min(48, Number(maxWeekly) || DEFAULT_WEEKLY_MAX_PERIODS)),
+        maxWorkingDays: Math.max(1, Math.min(6, Number(maxWorkingDays) || DEFAULT_MAX_WORKING_DAYS)),
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
@@ -270,9 +279,10 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         phone: phone.trim() || undefined,
         subjectIds: selectedSubjectIds,
         assignedClassSections: assignedClassSections,
-        maxConsecutivePeriods: maxConsecutive,
+        maxConsecutivePeriods: Math.min(3, Math.max(1, Number(maxConsecutive) || 2)),
         maxDailyPeriods: Math.max(1, Math.min(10, Number(maxDaily) || DEFAULT_DAILY_MAX_PERIODS)),
         maxWeeklyPeriods: Math.max(1, Math.min(48, Number(maxWeekly) || DEFAULT_WEEKLY_MAX_PERIODS)),
+        maxWorkingDays: Math.max(1, Math.min(6, Number(maxWorkingDays) || DEFAULT_MAX_WORKING_DAYS)),
         isBlockTeacher,
         isCoordinator,
         noProxy: effectiveNoProxy,
@@ -385,7 +395,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
               </span>
               <button
                 onClick={startAddNew}
-                className="px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md flex items-center gap-1 shadow-2xs"
+                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] rounded-md flex items-center gap-1 shadow-2xs"
               >
                 <Plus className="w-3 h-3" />
                 <span>+ নতুন শিক্ষক</span>
@@ -400,7 +410,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                 placeholder="শিক্ষক বা কোড খুঁজুন..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#145343]"
               />
             </div>
 
@@ -413,7 +423,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
               ) : (
                 filteredTeachers.map(t => {
                   const isSelected = editingTeacher?.id === t.id;
-                  const wl = computeTeacherWorkload(t, entries, proxyLogs, { workingDays });
+                  const wl = computeTeacherWorkload(t, entries, proxyLogs, { workingDays, settings });
 
                   return (
                     <div
@@ -593,14 +603,13 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                       Max Consecutive Classes (একটানা সর্বোচ্চ)
                     </label>
                     <select
-                      value={maxConsecutive}
-                      onChange={e => setMaxConsecutive(Number(e.target.value))}
+                      value={Math.min(3, maxConsecutive)}
+                      onChange={e => setMaxConsecutive(Math.min(3, Number(e.target.value)))}
                       className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
                     >
                       <option value={1}>1 period max</option>
                       <option value={2}>2 periods max (Recommended standard)</option>
-                      <option value={3}>3 periods max</option>
-                      <option value={4}>4 periods max</option>
+                      <option value={3}>3 periods max (Exceptional only)</option>
                     </select>
                   </div>
 
@@ -615,7 +624,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                         max={48}
                         value={maxWeekly}
                         onChange={e => setMaxWeekly(Math.max(1, Math.min(48, Number(e.target.value) || 24)))}
-                        className="w-full px-3 py-1.5 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                        className="w-full px-3 py-1.5 text-xs font-mono font-bold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
                       />
                       <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ২৪</span>
                     </div>
@@ -631,10 +640,27 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                         min={1}
                         max={10}
                         value={maxDaily}
-                        onChange={e => setMaxDaily(Math.max(1, Math.min(10, Number(e.target.value) || 5)))}
-                        className="w-full px-3 py-1.5 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                        onChange={e => setMaxDaily(Math.max(1, Math.min(10, Number(e.target.value) || DEFAULT_DAILY_MAX_PERIODS)))}
+                        className="w-full px-3 py-1.5 text-xs font-mono font-bold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
                       />
-                      <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ৫</span>
+                      <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ৪</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Max Working Days / Week (সাপ্তাহিক সর্বোচ্চ দিন)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={6}
+                        value={maxWorkingDays}
+                        onChange={e => setMaxWorkingDays(Math.max(1, Math.min(6, Number(e.target.value) || DEFAULT_MAX_WORKING_DAYS)))}
+                        className="w-full px-3 py-1.5 text-xs font-mono font-bold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                      />
+                      <span className="text-[11px] text-slate-500 whitespace-nowrap">ডিফল্ট ৫ দিন</span>
                     </div>
                   </div>
                 </div>
@@ -1026,13 +1052,13 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                         setEditingTeacher(null);
                         setIsAddingNew(false);
                       }}
-                      className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium"
+                      className="min-h-[40px] px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium"
                     >
                       বাতিল (Cancel)
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+                      className="min-h-[40px] px-4 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] rounded-lg shadow-xs"
                     >
                       {isAddingNew ? 'শিক্ষক সংরক্ষণ করুন' : 'আপডেট সংরক্ষণ করুন'}
                     </button>
@@ -1050,7 +1076,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                 </p>
                 <button
                   onClick={startAddNew}
-                  className="mt-4 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg inline-flex items-center gap-1.5 shadow-xs"
+                  className="mt-4 min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] rounded-lg inline-flex items-center gap-1.5 shadow-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>নতুন শিক্ষক যোগ করুন</span>
@@ -1062,12 +1088,12 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-500 tabular-nums">
             মোট শিক্ষক: <strong>{teachers.length} জন</strong>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+            className="min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] rounded-lg shadow-xs"
           >
             সম্পন্ন (Done)
           </button>

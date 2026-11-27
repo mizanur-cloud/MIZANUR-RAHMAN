@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DayOfWeek,
   PeriodTiming,
@@ -119,8 +119,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   const selectedSection =
     selectedClass?.sections.find(s => s.id === selectedSectionId) || selectedClass?.sections[0];
 
-  const subjectMap = new Map(subjects.map(s => [s.id, s]));
-  const teacherMap = new Map(teachers.map(t => [t.id, t]));
+  const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s])), [subjects]);
+  const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t])), [teachers]);
 
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isSwapMode, setIsSwapMode] = useState(false);
@@ -170,10 +170,43 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
     }
   };
 
-  // Active entries for this section
-  const sectionEntries = entries.filter(
-    e => e.classId === selectedClass?.id && e.sectionId === selectedSection?.id
+  const sectionEntries = useMemo(
+    () =>
+      entries.filter(
+        e => e.classId === selectedClass?.id && e.sectionId === selectedSection?.id
+      ),
+    [entries, selectedClass?.id, selectedSection?.id]
   );
+
+  const sectionCountBySectionId = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!selectedClass) return map;
+    for (const e of entries) {
+      if (e.classId === selectedClass.id) {
+        map.set(e.sectionId, (map.get(e.sectionId) || 0) + 1);
+      }
+    }
+    return map;
+  }, [entries, selectedClass]);
+
+  const { sectionEntrySlotMap, sectionEntryDayCountMap, subjectCountMap } = useMemo(() => {
+    const slotMap = new Map<string, TimetableEntry[]>();
+    const dayCounts = new Map<DayOfWeek, number>();
+    const subCounts = new Map<string, number>();
+    for (const e of sectionEntries) {
+      const key = `${e.day}_${e.periodIndex}`;
+      const list = slotMap.get(key);
+      if (list) list.push(e);
+      else slotMap.set(key, [e]);
+      dayCounts.set(e.day, (dayCounts.get(e.day) || 0) + 1);
+      subCounts.set(e.subjectId, (subCounts.get(e.subjectId) || 0) + 1);
+    }
+    return {
+      sectionEntrySlotMap: slotMap,
+      sectionEntryDayCountMap: dayCounts,
+      subjectCountMap: subCounts,
+    };
+  }, [sectionEntries]);
 
   const allDisplayPeriods = periodTimings;
   const isPlayNur = selectedClass ? isPlayOrNursery(selectedClass) : false;
@@ -237,8 +270,11 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
     onUpdateSectionSubjects(selectedClass.id, selectedSection.id, Array.from(curSet));
   };
 
-  const conflictEntryIds = new Set<string>();
-  conflicts.forEach(c => c.entryIds.forEach(id => conflictEntryIds.add(id)));
+  const conflictEntryIds = useMemo(() => {
+    const set = new Set<string>();
+    conflicts.forEach(c => c.entryIds.forEach(id => set.add(id)));
+    return set;
+  }, [conflicts]);
 
   const handleSlotClick = (day: DayOfWeek, periodIndex: number) => {
     if (!selectedClass || !selectedSection) return;
@@ -323,9 +359,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
             </span>
             {selectedClass?.sections.map(sec => {
               const isSelected = sec.id === selectedSection?.id;
-              const secCount = entries.filter(
-                e => e.classId === selectedClass.id && e.sectionId === sec.id
-              ).length;
+              const secCount = sectionCountBySectionId.get(sec.id) || 0;
               return (
                 <button
                   key={sec.id}
@@ -553,9 +587,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                 </span>
                 {selectedClass?.sections.map(sec => {
                   const isSelected = sec.id === selectedSection?.id;
-                  const secCount = entries.filter(
-                    e => e.classId === selectedClass.id && e.sectionId === sec.id
-                  ).length;
+                  const secCount = sectionCountBySectionId.get(sec.id) || 0;
 
                   return (
                     <button
@@ -806,10 +838,10 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
             const curWin = liveStatus.currentWindow;
             const nextWin = liveStatus.nextWindow;
             const curEntries = curWin
-              ? sectionEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === curWin.period.periodIndex)
+              ? sectionEntrySlotMap.get(`${liveStatus.todayEnum}_${curWin.period.periodIndex}`) || []
               : [];
             const nextEntries = nextWin
-              ? sectionEntries.filter(e => e.day === liveStatus.todayEnum && e.periodIndex === nextWin.period.periodIndex)
+              ? sectionEntrySlotMap.get(`${liveStatus.todayEnum}_${nextWin.period.periodIndex}`) || []
               : [];
             const curDismissed = curWin && selectedClass
               ? isSlotDismissed(selectedClass, liveStatus.todayEnum, curWin.period.periodIndex, selectedSectionId, workingDays)
@@ -935,7 +967,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                   )}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-slate-400 font-mono tabular-nums">
-                  {sectionEntries.filter(e => e.day === activeMobileDay).length} টি ক্লাস নির্ধারিত · সোয়াইপ করুন
+                  {sectionEntryDayCountMap.get(activeMobileDay) || 0} টি ক্লাস নির্ধারিত · সোয়াইপ করুন
                 </div>
               </div>
 
@@ -1030,9 +1062,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                 );
               }
 
-              const slotEntries = sectionEntries.filter(
-                e => e.day === activeMobileDay && e.periodIndex === period.periodIndex
-              );
+              const slotEntries =
+                sectionEntrySlotMap.get(`${activeMobileDay}_${period.periodIndex}`) || [];
               const isSelectedSwap =
                 isSwapMode && swapSource?.day === activeMobileDay && swapSource?.periodIndex === period.periodIndex;
               const primaryColor = slotEntries[0] ? subjectMap.get(slotEntries[0].subjectId)?.color || '#145343' : undefined;
@@ -1211,9 +1242,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                       );
                     }
 
-                    const slotEntries = sectionEntries.filter(
-                      e => e.day === day && e.periodIndex === period.periodIndex
-                    );
+                    const slotEntries =
+                      sectionEntrySlotMap.get(`${day}_${period.periodIndex}`) || [];
 
                     const isSelectedSwapSource =
                       isSwapMode && swapSource?.day === day && swapSource?.periodIndex === period.periodIndex;
@@ -1643,7 +1673,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
             {effectiveReqs.map(req => {
               const subject = subjectMap.get(req.subjectId);
               const teacher = req.assignedTeacherId ? teacherMap.get(req.assignedTeacherId) : null;
-              const scheduledCount = sectionEntries.filter(e => e.subjectId === req.subjectId).length;
+              const scheduledCount = subjectCountMap.get(req.subjectId) || 0;
               const targetPeriods = getEffectiveTargetPeriods(req.subjectId, req.periodsPerWeek);
               const isOver = scheduledCount > targetPeriods;
               const isExact = scheduledCount === targetPeriods;

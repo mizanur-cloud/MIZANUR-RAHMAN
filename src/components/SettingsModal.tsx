@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { DayOfWeek, PeriodTiming, SchoolSettings, Subject, Teacher } from '../types';
-import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Lock, Plus, Trash2, Coffee, SlidersHorizontal } from 'lucide-react';
-import { AppState, exportBackupJSON, importBackupJSON } from '../services/storage';
+import { DayOfWeek, PeriodTiming, RoutineSnapshot, SchoolSettings, Subject, Teacher } from '../types';
+import { X, Settings as SettingsIcon, RotateCcw, Download, Upload, Lock, Plus, Trash2, Coffee, SlidersHorizontal, History, ShieldCheck } from 'lucide-react';
+import { AppState, deleteRoutineSnapshot, exportBackupJSON, importBackupJSON, loadRoutineSnapshots, saveRoutineSnapshot } from '../services/storage';
 import { isHinduReligionTeacher } from '../services/parallelSubjects';
+import { DEFAULT_DAILY_MAX_PERIODS, DEFAULT_MAX_WORKING_DAYS } from '../services/workloadService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ interface SettingsModalProps {
   onResetToDefaults: () => void;
   fullAppState: AppState;
   onImportBackup: (newState: AppState) => void;
+  onRestoreSnapshot?: (snapshot: RoutineSnapshot) => void;
+  onApplyGlobalWorkloadLimits?: (dailyMax: number, workingDaysCount: number) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -26,6 +29,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetToDefaults,
   fullAppState,
   onImportBackup,
+  onRestoreSnapshot,
+  onApplyGlobalWorkloadLimits,
 }) => {
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
@@ -43,6 +48,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [combinedSlots, setCombinedSlots] = useState<{ day: DayOfWeek; periodIndex: number }[]>(
     settings.religionSchedule?.combinedSlots || []
   );
+  const [defaultMaxDailyPeriods, setDefaultMaxDailyPeriods] = useState<number>(
+    settings.defaultMaxDailyPeriods || DEFAULT_DAILY_MAX_PERIODS
+  );
+  const [defaultMaxWorkingDays, setDefaultMaxWorkingDays] = useState<number>(
+    settings.defaultMaxWorkingDays || DEFAULT_MAX_WORKING_DAYS
+  );
+  const [snapshots, setSnapshots] = useState<RoutineSnapshot[]>([]);
+  const [confirmRestoreId, setConfirmRestoreId] = useState<string | null>(null);
+  const [confirmApplyGlobal, setConfirmApplyGlobal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -58,6 +72,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setMaxConcurrentSections(settings.religionSchedule?.maxConcurrentSections || 3);
       setCombinedHinduTeacherId(settings.religionSchedule?.combinedHinduTeacherId || 'tch-tapash');
       setCombinedSlots(settings.religionSchedule?.combinedSlots || []);
+      setDefaultMaxDailyPeriods(settings.defaultMaxDailyPeriods || DEFAULT_DAILY_MAX_PERIODS);
+      setDefaultMaxWorkingDays(settings.defaultMaxWorkingDays || DEFAULT_MAX_WORKING_DAYS);
+      setSnapshots(loadRoutineSnapshots());
+      setConfirmRestoreId(null);
+      setConfirmApplyGlobal(false);
       setConfirmReset(false);
       setStatusMessage(null);
     }
@@ -164,6 +183,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       principalName: principalName.trim(),
       workingDays,
       periodTimings,
+      defaultMaxDailyPeriods: Math.max(1, Math.min(8, Number(defaultMaxDailyPeriods) || DEFAULT_DAILY_MAX_PERIODS)),
+      defaultMaxWorkingDays: Math.max(1, Math.min(6, Number(defaultMaxWorkingDays) || DEFAULT_MAX_WORKING_DAYS)),
       religionSchedule: {
         hinduRoom: hinduRoom.trim() || '307',
         maxConcurrentSections: Math.max(1, Math.min(6, Number(maxConcurrentSections) || 3)),
@@ -172,6 +193,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       },
     });
     onClose();
+  };
+
+  const handleCreateManualSnapshot = () => {
+    const created = saveRoutineSnapshot(`ম্যানুয়াল ব্যাকআপ (${new Date().toLocaleTimeString()})`, fullAppState);
+    if (created) {
+      setSnapshots(loadRoutineSnapshots());
+      setStatusMessage({ type: 'success', text: 'বর্তমান রুটিন ও কনফিগারেশনের নিরাপদ স্ন্যাপশট সংরক্ষণ করা হয়েছে।' });
+    } else {
+      setStatusMessage({ type: 'error', text: 'ব্রাউজার স্টোরেজ সীমার কারণে স্ন্যাপশট সংরক্ষণ করা যায়নি।' });
+    }
+  };
+
+  const handleDeleteSnapshotItem = (id: string) => {
+    const next = deleteRoutineSnapshot(id);
+    setSnapshots(next);
+    if (confirmRestoreId === id) setConfirmRestoreId(null);
   };
 
   const handleBackupExport = () => {
@@ -586,6 +623,190 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Global Teacher Workload Limits Policy */}
+          <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-[#145343] dark:text-emerald-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Teacher Daily & Weekly Workload Policy (গ্লোবাল ওয়ার্কলোড নীতি)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  ডিফল্ট দৈনিক ক্লাস সীমা (৪টি) ও সর্বোচ্চ সাপ্তাহিক কর্মদিবস (৫ দিন) নির্ধারণ করুন এবং প্রয়োজনে সকল নিয়মিত শিক্ষকে প্রয়োগ করুন।
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-[#bfd5cc] dark:border-emerald-900/60 bg-[#eef5f2]/60 dark:bg-emerald-950/20">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Default Max Daily Classes (দৈনিক সর্বোচ্চ পিরিয়ড)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={defaultMaxDailyPeriods}
+                  onChange={e => setDefaultMaxDailyPeriods(Math.max(1, Math.min(8, Number(e.target.value) || DEFAULT_DAILY_MAX_PERIODS)))}
+                  className="w-full px-2.5 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Default Max Working Days / Week (সাপ্তাহিক সর্বোচ্চ দিন)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={defaultMaxWorkingDays}
+                  onChange={e => setDefaultMaxWorkingDays(Math.max(1, Math.min(6, Number(e.target.value) || DEFAULT_MAX_WORKING_DAYS)))}
+                  className="w-full px-2.5 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            {onApplyGlobalWorkloadLimits && (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                {confirmApplyGlobal ? (
+                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-1.5 w-full justify-between">
+                    <span className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-200">
+                      সব নিয়মিত শিক্ষকের দৈনিক সীমা {defaultMaxDailyPeriods} ও কর্মদিবস {defaultMaxWorkingDays} দিন সেট করবেন?
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onApplyGlobalWorkloadLimits(defaultMaxDailyPeriods, defaultMaxWorkingDays);
+                          setConfirmApplyGlobal(false);
+                          setStatusMessage({
+                            type: 'success',
+                            text: `সকল নিয়মিত শিক্ষকে দৈনিক ${defaultMaxDailyPeriods} পিরিয়ড এবং সপ্তাহে ${defaultMaxWorkingDays} কর্মদিবস প্রয়োগ হয়েছে।`,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold text-white bg-[#145343] hover:bg-[#0f3f33] rounded"
+                      >
+                        হ্যাঁ, প্রয়োগ করুন
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmApplyGlobal(false)}
+                        className="px-2 py-1 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded"
+                      >
+                        বাতিল
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmApplyGlobal(true)}
+                    className="min-h-[40px] px-3 py-1.5 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/50 hover:bg-[#dfece7] rounded-lg border border-[#bfd5cc] dark:border-emerald-800 transition-colors"
+                  >
+                    সকল নিয়মিত শিক্ষকে সীমা প্রয়োগ করুন (Apply to All Regular Teachers)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Snapshot Undo / Restore Safety Vault */}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5" />
+                  <span>Routine Snapshots & Restore (অটো-সেভড ইতিহাস)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  রুটিন তৈরি, অটো-ফিক্স বা রিসেটের পূর্বে স্বয়ংক্রিয়ভাবে সংরক্ষিত পূর্ববর্তী অবস্থা ১ ক্লিকে ফিরিয়ে আনুন।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCreateManualSnapshot}
+                className="min-h-[36px] px-2.5 py-1 text-[11px] font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/50 hover:bg-[#dfece7] rounded-lg border border-[#bfd5cc] dark:border-emerald-800 transition-colors"
+              >
+                + বর্তমান স্ন্যাপশট সংরক্ষণ
+              </button>
+            </div>
+
+            {snapshots.length === 0 ? (
+              <div className="p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-xs text-slate-400 text-center">
+                এখনো কোনো রুটিন স্ন্যাপশট সংরক্ষিত হয়নি। অটো-জেনারেট বা Auto Fix চালালে স্বয়ংক্রিয়ভাবে ব্যাকআপ জমা হবে।
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {snapshots.map(snap => (
+                  <div
+                    key={snap.id}
+                    className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {snap.label}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono tabular-nums">
+                          {new Date(snap.createdAt).toLocaleString()} · {snap.entryCount} slots
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onRestoreSnapshot && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRestoreId(confirmRestoreId === snap.id ? null : snap.id)}
+                            className="min-h-[36px] px-2.5 py-1 text-[11px] font-semibold text-[#145343] dark:text-emerald-300 bg-white dark:bg-slate-900 border border-[#bfd5cc] dark:border-emerald-800 hover:bg-[#eef5f2] rounded-lg"
+                          >
+                            Restore
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSnapshotItem(snap.id)}
+                          title="Delete snapshot"
+                          className="min-h-[36px] p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {confirmRestoreId === snap.id && onRestoreSnapshot && (
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[11px]">
+                        <span className="font-semibold text-amber-800 dark:text-amber-300">
+                          এই স্ন্যাপশটে ফিরে যেতে চান? (বর্তমান রুটিন ব্যাকআপ রাখা হবে)
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onRestoreSnapshot(snap);
+                              setConfirmRestoreId(null);
+                              setSnapshots(loadRoutineSnapshots());
+                              setStatusMessage({ type: 'success', text: `"${snap.label}" সফলভাবে রিস্টোর করা হয়েছে।` });
+                            }}
+                            className="px-2.5 py-1 font-bold text-white bg-[#145343] hover:bg-[#0f3f33] rounded"
+                          >
+                            হ্যাঁ, রিস্টোর করুন
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRestoreId(null)}
+                            className="px-2 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
+                          >
+                            বাতিল
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Backup, Restore & Reset */}
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
@@ -595,13 +816,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 type="button"
                 onClick={handleBackupExport}
-                className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors"
+                className="min-h-[40px] px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export JSON Backup</span>
               </button>
 
-              <label className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors">
+              <label className="min-h-[40px] px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors">
                 <Upload className="w-3.5 h-3.5" />
                 <span>Restore JSON Backup</span>
                 <input
@@ -639,7 +860,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmReset(true)}
-                  className="px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg flex items-center gap-1.5 transition-colors ml-auto"
+                  className="min-h-[40px] px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg flex items-center gap-1.5 transition-colors ml-auto"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reset to Factory Defaults</span>
@@ -653,13 +874,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
+              className="min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+              className="min-h-[44px] px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg shadow-xs transition-colors"
             >
               Save Settings
             </button>

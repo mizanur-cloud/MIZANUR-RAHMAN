@@ -435,11 +435,7 @@ export const LiveDashboardView: React.FC<LiveDashboardViewProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase text-[#145343] dark:text-emerald-400">
-                  {inspectMode === 'live' && !isSchoolOffline ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse" />
-                  ) : (
-                    <Clock className="w-3.5 h-3.5" />
-                  )}
+                  <Clock className="w-3.5 h-3.5" />
                   <span>
                     {inspectMode === 'live'
                       ? 'রিয়েল-টাইম ক্যাম্পাস ড্যাশবোর্ড'

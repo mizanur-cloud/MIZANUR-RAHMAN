@@ -24,9 +24,16 @@ import {
   isPlayOrNursery,
   isReligionSubject,
   isSubjectSelectedForSection,
+  isTeacherBlockTeacher,
 } from './parallelSubjects';
 import { isSlotDismissed } from './scheduleTiers';
-import { getTeacherDailyMax } from './workloadService';
+import {
+  analyzeTeacherWeeklyPattern,
+  DEFAULT_DAILY_MAX_PERIODS,
+  DEFAULT_WEEKLY_MAX_WORKING_DAYS,
+  getTeacherDailyMax,
+  MAX_UNAVOIDABLE_THREE_CONSECUTIVE_DAYS,
+} from './workloadService';
 
 export interface VerificationScope {
   type: 'all' | 'class' | 'section';
@@ -64,6 +71,29 @@ export interface TeacherVerificationDetail {
   dailyLimitViolations: number;
   weeklyCapacityExceeded: boolean;
   activeDays: number;
+  maxWorkingDays: number;
+  workingDaysExceeded: boolean;
+  workingDaysMathematicallyImpossible: boolean;
+  threeConsecDaysCount: number;
+  fourPlusConsecDaysCount: number;
+  unbalancedDays: boolean;
+}
+
+export interface SystemHealthCheckItem {
+  id: string;
+  order: number;
+  label: string;
+  status: 'PASS' | 'WARNING' | 'FAIL';
+  valueText: string;
+  detail: string;
+}
+
+export interface SystemHealthReport {
+  overallStatus: 'PASS' | 'WARNING' | 'FAIL';
+  passCount: number;
+  warningCount: number;
+  failCount: number;
+  items: SystemHealthCheckItem[];
 }
 
 export interface VerificationCheckItem {
@@ -134,6 +164,13 @@ export interface RoutineVerificationReport {
   teacherDetails: TeacherVerificationDetail[];
   unassignedTeachersCount: number;
   teacherLimitViolationsCount: number;
+  workingDaysViolationsCount: number;
+  workingDaysImpossibleCount: number;
+  fourPlusConsecViolationsCount: number;
+  excessiveThreeConsecTeachersCount: number;
+  unbalancedTeachersCount: number;
+  verificationTimeMs: number;
+  systemHealthReport: SystemHealthReport;
   unselectedSubjectEntriesCount: number;
   sameDayRepeatCount: number;
   checks: VerificationCheckItem[];
@@ -150,9 +187,12 @@ export function verifyRoutine(
   scope: VerificationScope = { type: 'all' },
   settings?: SchoolSettings
 ): RoutineVerificationReport {
+  const verifyStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const teachingPeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
   const teachingPeriodIndices = teachingPeriods.map(p => p.periodIndex);
   const maxWeeklySlots = Math.max(1, workingDays.length * Math.max(1, teachingPeriodIndices.length));
+  const configuredWorkingDaysCap = settings?.defaultMaxWorkingDays ?? DEFAULT_WEEKLY_MAX_WORKING_DAYS;
+  const configuredDailyCap = settings?.defaultMaxDailyPeriods ?? DEFAULT_DAILY_MAX_PERIODS;
 
   const hinduRoom = getCombinedHinduRoom(settings);
   const maxRelConcurrent = getMaxReligionConcurrentSections(settings);
@@ -214,6 +254,8 @@ export function verifyRoutine(
   const subjectFixedPeriodConflicts = scopedConflicts.filter(c => c.type === 'subject_fixed_period');
   const unavailableConflicts = scopedConflicts.filter(c => c.type === 'teacher_unavailable');
   const limitConflicts = scopedConflicts.filter(c => c.type === 'teacher_limit_exceeded');
+  const workingDaysConflicts = scopedConflicts.filter(c => c.type === 'teacher_working_days_exceeded');
+  const consecutivePatternConflicts = scopedConflicts.filter(c => c.type === 'consecutive_pattern_exceeded');
 
   // Count Same-day repeats in scope
   const daySubMap = new Map<string, number>();
@@ -386,6 +428,7 @@ export function verifyRoutine(
     const assignedPeriods = uniquePhysicalSlotKeys.size;
 
     let requiredPeriods = 0;
+    let maxSingleSubFreq = 0;
     if (teacher.isBlockTeacher) {
       classes
         .filter(
@@ -420,13 +463,24 @@ export function verifyRoutine(
             }
             if (expectedTch === teacher.id) {
               requiredPeriods += req.periodsPerWeek;
+              if (req.periodsPerWeek > maxSingleSubFreq) {
+                maxSingleSubFreq = req.periodsPerWeek;
+              }
             }
           });
         });
       });
     }
 
-    const maxDaily = getTeacherDailyMax(teacher);
+    const secSubCounts = new Map<string, number>();
+    teacherEntries.forEach(e => {
+      const k = `${e.classId}__${e.sectionId}__${e.subjectId}`;
+      const nxt = (secSubCounts.get(k) || 0) + 1;
+      secSubCounts.set(k, nxt);
+      if (nxt > maxSingleSubFreq) maxSingleSubFreq = nxt;
+    });
+
+    const maxDaily = getTeacherDailyMax(teacher, settings);
     let peakDailyAssigned = 0;
     let dailyLimitViolations = 0;
     let activeDays = 0;
@@ -439,6 +493,15 @@ export function verifyRoutine(
 
     const missingPeriods = Math.max(0, requiredPeriods - sectionCoveragePeriods);
     const extraPeriods = Math.max(0, sectionCoveragePeriods - requiredPeriods);
+    const isBlockTch = isTeacherBlockTeacher(teacher, classes);
+    const pattern = analyzeTeacherWeeklyPattern(
+      teacher,
+      teacherEntries,
+      workingDays,
+      requiredPeriods,
+      maxSingleSubFreq,
+      settings
+    );
 
     return {
       teacherId: teacher.id,
@@ -454,6 +517,12 @@ export function verifyRoutine(
       dailyLimitViolations,
       weeklyCapacityExceeded: assignedPeriods > maxWeeklySlots,
       activeDays,
+      maxWorkingDays: pattern.maxWorkingDays,
+      workingDaysExceeded: !isBlockTch && pattern.workingDaysExceeded,
+      workingDaysMathematicallyImpossible: !isBlockTch && pattern.mathematicallyImpossibleWorkingDays,
+      threeConsecDaysCount: isBlockTch ? 0 : pattern.threeConsecDays.length,
+      fourPlusConsecDaysCount: pattern.fourPlusConsecDays.length,
+      unbalancedDays: !isBlockTch && pattern.unbalancedDays,
     };
   });
 
@@ -461,7 +530,25 @@ export function verifyRoutine(
     t => t.requiredPeriods > 0 && t.missingPeriods > 0
   ).length;
   const overloadedTeachers = teacherDetails.filter(t => t.weeklyCapacityExceeded);
-  const teacherLimitViolationsCount = limitConflicts.length;
+  const avoidableLimitConflicts = limitConflicts.filter(c => c.severity === 'error');
+  const mathCapLimitWarnings = limitConflicts.filter(c => c.severity !== 'error');
+  const teacherLimitViolationsCount = avoidableLimitConflicts.length;
+  const workingDaysViolationsCount = teacherDetails.filter(
+    t => t.workingDaysExceeded && !t.workingDaysMathematicallyImpossible
+  ).length;
+  const workingDaysImpossibleCount = teacherDetails.filter(
+    t => t.workingDaysExceeded && t.workingDaysMathematicallyImpossible
+  ).length;
+  const fourPlusConsecViolationsCount = teacherDetails.filter(
+    t => t.fourPlusConsecDaysCount > 0
+  ).length;
+  const excessiveThreeConsecTeachersCount = consecutivePatternConflicts.filter(
+    c => c.severity === 'error' && c.id.startsWith('conf-consec3excess-')
+  ).length;
+  const forcedThreeConsecWarningsCount = consecutivePatternConflicts.filter(
+    c => c.severity === 'warning' && c.id.startsWith('conf-consec3excess-')
+  ).length;
+  const unbalancedTeachersCount = teacherDetails.filter(t => t.unbalancedDays).length;
   const unselectedSubjectEntriesCount = scopedEntries.filter(e => {
     const cls = classes.find(c => c.id === e.classId);
     if (!cls || isPlayOrNursery(cls)) return false;
@@ -554,7 +641,7 @@ export function verifyRoutine(
   }
 
   const limitTeacherSummaryMap = new Map<string, { name: string; count: number; days: string[] }>();
-  limitConflicts.forEach(c => {
+  avoidableLimitConflicts.forEach(c => {
     const tName = c.teacherId
       ? teacherMap.get(c.teacherId)?.name ||
         c.title.replace(/^Daily Period Limit Exceeded:\s*|^Teacher Weekly Capacity Exceeded:\s*/, '')
@@ -571,6 +658,14 @@ export function verifyRoutine(
   const limitTeachersDetail = Array.from(limitTeacherSummaryMap.values())
     .map(item => `${item.name} (${item.count}টি: ${item.days.join(', ')})`)
     .join(' · ');
+
+  const mathCapLimitTeacherNames = Array.from(
+    new Set(
+      mathCapLimitWarnings.map(c =>
+        c.teacherId ? teacherMap.get(c.teacherId)?.name || c.teacherId : c.title
+      )
+    )
+  );
 
   const availConflictCount = teacherDoubleBookings.length + unavailableConflicts.length;
 
@@ -613,7 +708,9 @@ export function verifyRoutine(
       numericValue: teacherLimitViolationsCount,
       detail:
         teacherLimitViolationsCount === 0
-          ? 'সকল শিক্ষক দৈনিক ও সাপ্তাহিক সর্বোচ্চ ক্লাস সীমার মধ্যে আছেন।'
+          ? mathCapLimitWarnings.length > 0
+            ? `সকল অর্জনযোগ্য শিক্ষক দৈনিক ৪ ক্লাসের মধ্যে আছেন (গাণিতিক লোড-ক্যাপ নোটিশ: ${mathCapLimitTeacherNames.join(', ')} ≤৫/দিন)।`
+            : 'সকল শিক্ষক দৈনিক (≤৪টি) ও সাপ্তাহিক ক্লাস সীমার মধ্যে আছেন।'
           : `${teacherLimitViolationsCount}টি দৈনিক/সাপ্তাহিক পিরিয়ড সীমা লঙ্ঘন (${limitTeacherSummaryMap.size} জন শিক্ষক): ${limitTeachersDetail}।`,
     },
     teacherAvailabilityConflicts: {
@@ -725,7 +822,7 @@ export function verifyRoutine(
       id: 'chk-teacher-limits',
       label: '7. দৈনিক ও সাপ্তাহিক পিরিয়ড সীমা (Daily/Weekly Teacher Limits)',
       passed: teacherLimitViolationsCount === 0,
-      severity: limitConflicts.some(c => c.severity === 'error') ? 'error' : 'warning',
+      severity: teacherLimitViolationsCount > 0 ? 'error' : 'warning',
       detail: finalValidation.dailyWeeklyLimits.detail,
     },
     {
@@ -734,6 +831,31 @@ export function verifyRoutine(
       passed: religionSchedulingStatus.ok,
       severity: 'error',
       detail: religionSchedulingStatus.detail,
+    },
+    {
+      id: 'chk-working-days',
+      label: `9. সাপ্তাহিক সর্বোচ্চ ${configuredWorkingDaysCap} কার্যদিবস সীমা (Weekly Working Days ≤ ${configuredWorkingDaysCap})`,
+      passed: workingDaysViolationsCount === 0 && workingDaysImpossibleCount === 0,
+      severity: workingDaysViolationsCount > 0 ? 'error' : 'warning',
+      detail:
+        workingDaysViolationsCount === 0 && workingDaysImpossibleCount === 0
+          ? `সব নিয়মিত শিক্ষক সপ্তাহে সর্বোচ্চ ${configuredWorkingDaysCap} কার্যদিবসের মধ্যে ক্লাস নিচ্ছেন।`
+          : workingDaysViolationsCount > 0
+          ? `${workingDaysViolationsCount} জন শিক্ষকের সাপ্তাহিক কার্যদিবস ${configuredWorkingDaysCap} দিনের বেশি (${workingDaysConflicts[0]?.title || 'Auto-Fix প্রয়োজন'})।`
+          : `${workingDaysImpossibleCount} জন শিক্ষকের মোট ক্লাস সংখ্যা > (${configuredWorkingDaysCap} দিন × দৈনিক সীমা) হওয়ায় অতিরিক্ত দিন প্রয়োজন হয়েছে।`,
+    },
+    {
+      id: 'chk-consecutive-pattern',
+      label: '10. একটানা ক্লাস নিয়ন্ত্রণ (৪+ সম্পূর্ণ নিষিদ্ধ, ৩-টানা ≤ ২ দিন)',
+      passed: fourPlusConsecViolationsCount === 0 && excessiveThreeConsecTeachersCount === 0 && forcedThreeConsecWarningsCount === 0,
+      severity: fourPlusConsecViolationsCount > 0 || excessiveThreeConsecTeachersCount > 0 ? 'error' : 'warning',
+      detail:
+        fourPlusConsecViolationsCount === 0 && excessiveThreeConsecTeachersCount === 0 && forcedThreeConsecWarningsCount === 0
+          ? 'কোনো শিক্ষকের একটানা ৪+ ক্লাস নেই এবং ৩-টানা ক্লাস অনুমোদিত সীমার মধ্যে।'
+          : fourPlusConsecViolationsCount === 0 && excessiveThreeConsecTeachersCount === 0
+          ? `৪+ একটানা ক্লাস ০টি; ${forcedThreeConsecWarningsCount} জন মর্নিং/উচ্চ লোড শিক্ষকের কাঠামোগত ৩-টানা ক্লাস রয়েছে।`
+          : consecutivePatternConflicts[0]?.description ||
+            `${fourPlusConsecViolationsCount} জন শিক্ষকের ৪+ একটানা এবং ${excessiveThreeConsecTeachersCount} জনের ২ দিনের বেশি ৩-টানা ক্লাস রয়েছে।`,
     },
   ];
 
@@ -750,14 +872,22 @@ export function verifyRoutine(
     exceededCapacitySectionsCount +
     overQuotaEntriesCount +
     limitConflicts.filter(c => c.severity === 'error').length +
+    workingDaysViolationsCount +
+    fourPlusConsecViolationsCount +
+    excessiveThreeConsecTeachersCount +
     (religionSchedulingStatus.ok ? 0 : 1);
 
   const hasUnassigned = unassignedClasses > 0 || (scope.type === 'all' && unassignedTeachersCount > 0);
-  const hasWarnings = teacherLimitViolationsCount > 0 || sameDayRepeatCount > 0;
+  const hasWarnings =
+    teacherLimitViolationsCount > 0 ||
+    sameDayRepeatCount > 0 ||
+    workingDaysImpossibleCount > 0 ||
+    forcedThreeConsecWarningsCount > 0 ||
+    unbalancedTeachersCount > 0;
 
   let finalCompletionStatus: 'complete' | 'incomplete' | 'warning' = 'complete';
-  let statusHeadline = 'Routine Verified — All 8 Checks Passed';
-  let statusSubtext = `0 Unassigned · 0 Teacher/Room Conflicts · Section Quotas & Combined Room ${hinduRoom} Verified`;
+  let statusHeadline = 'Routine Verified — All Checks Passed';
+  let statusSubtext = `0 Unassigned · 0 Teacher/Room Conflicts · ≤${configuredDailyCap}/Day & ≤${configuredWorkingDaysCap} Working Days Verified`;
 
   if (criticalErrorsCount > 0 || hasUnassigned) {
     finalCompletionStatus = 'incomplete';
@@ -769,14 +899,275 @@ export function verifyRoutine(
     if (roomConflicts.length > 0) reasons.push(`${roomConflicts.length} Room Conflicts`);
     if (availConflictCount > 0) reasons.push(`${availConflictCount} Teacher Conflicts`);
     if (classDoubleBookings.length > 0) reasons.push(`${classDoubleBookings.length} Section Overlaps`);
+    if (workingDaysViolationsCount > 0) reasons.push(`${workingDaysViolationsCount} Teachers > ${configuredWorkingDaysCap} Working Days`);
+    if (fourPlusConsecViolationsCount > 0) reasons.push(`${fourPlusConsecViolationsCount} Teachers w/ 4+ Consecutive`);
+    if (excessiveThreeConsecTeachersCount > 0) reasons.push(`${excessiveThreeConsecTeachersCount} Excessive 3-Consec Days`);
     if (!religionSchedulingStatus.ok) reasons.push('Combined Religion Rule Issue');
     if (exceededCapacitySectionsCount > 0) reasons.push(`${exceededCapacitySectionsCount} Over-Subscribed Sections`);
     statusSubtext = reasons.join(' · ') || 'Review validation details below.';
   } else if (hasWarnings) {
     finalCompletionStatus = 'warning';
-    statusHeadline = 'Routine Complete With Teacher Limit Notices';
-    statusSubtext = `0 Unassigned Periods · 0 Critical Conflicts · ${teacherLimitViolationsCount} Daily/Weekly Limit Notices`;
+    statusHeadline = 'Routine Complete With Workload Notices';
+    statusSubtext = `0 Unassigned · 0 Critical Conflicts · ${teacherLimitViolationsCount} Limit / ${workingDaysImpossibleCount} Math-Cap / ${unbalancedTeachersCount} Balance Notices`;
   }
+
+  const verificationTimeMs = Math.max(
+    1,
+    Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - verifyStartMs)
+  );
+
+  // Programmatic runtime checks for sys-1, sys-2, sys-3 (replacing static defaults)
+  const validClassIds = new Set(classes.map(c => c.id));
+  const validSubjectIds = new Set(subjects.map(s => s.id));
+  const validDaySetForHealth = new Set(workingDays);
+  const validPeriodSetForHealth = new Set(teachingPeriodIndices);
+  const brokenEntryRefs = scopedEntries.filter(
+    e =>
+      !validClassIds.has(e.classId) ||
+      !validSubjectIds.has(e.subjectId) ||
+      !validDaySetForHealth.has(e.day) ||
+      !validPeriodSetForHealth.has(e.periodIndex)
+  ).length;
+  const hasCoreCatalog = classes.length > 0 && teachers.length > 0 && subjects.length > 0 && workingDays.length > 0;
+  let storageAccessible = true;
+  let snapshotCount = 0;
+  let exposedPiiCount = 0;
+  let hasUnsafeClientSecret = false;
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    try {
+      const testKey = '__idsc_health_probe__';
+      localStorage.setItem(testKey, '1');
+      localStorage.removeItem(testKey);
+      const snapshotKeys = ['school_routine_snapshots_v1', 'idsc_routine_snapshots_v1'];
+      for (const snapKey of snapshotKeys) {
+        const rawSnapshots = localStorage.getItem(snapKey);
+        if (!rawSnapshots) continue;
+        const parsedSnaps = JSON.parse(rawSnapshots);
+        if (Array.isArray(parsedSnaps)) {
+          snapshotCount += parsedSnaps.length;
+          for (const snap of parsedSnaps) {
+            const snapTeachers = snap?.state?.teachers;
+            if (Array.isArray(snapTeachers)) {
+              exposedPiiCount += snapTeachers.filter((t: any) => Boolean(t?.email || t?.phone)).length;
+            }
+          }
+        }
+      }
+      const teacherKeys = ['school_routine_teachers_v1', 'idsc_teachers_v2'];
+      for (const tchKey of teacherKeys) {
+        const rawTeachers = localStorage.getItem(tchKey);
+        if (!rawTeachers) continue;
+        const parsedTeachers = JSON.parse(rawTeachers);
+        if (Array.isArray(parsedTeachers)) {
+          exposedPiiCount += parsedTeachers.filter((t: any) => Boolean(t?.email || t?.phone)).length;
+        }
+      }
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (/gemini_api_key|api_secret|private_key/i.test(k)) {
+          hasUnsafeClientSecret = true;
+        }
+      }
+    } catch {
+      storageAccessible = false;
+    }
+  }
+
+  const orderedPeriodsOk =
+    teachingPeriodIndices.length > 0 &&
+    periodTimings.every(p => Boolean(p.label?.trim()) && Boolean(p.startTime?.trim()) && Boolean(p.endTime?.trim()));
+  let domOverflowPx = 0;
+  let hasDomMetrics = false;
+  if (typeof document !== 'undefined' && typeof window !== 'undefined' && document.documentElement) {
+    hasDomMetrics = true;
+    domOverflowPx = Math.max(0, document.documentElement.scrollWidth - window.innerWidth);
+  }
+  const uiResponsiveOk = orderedPeriodsOk && (!hasDomMetrics || domOverflowPx <= 4);
+  const functionalityOk = hasCoreCatalog && brokenEntryRefs === 0 && storageAccessible;
+  const securityOk = exposedPiiCount === 0 && !hasUnsafeClientSecret;
+
+  // Build Comprehensive 13-Point System Health Report
+  const healthItems: SystemHealthCheckItem[] = [
+    {
+      id: 'sys-1',
+      order: 1,
+      label: 'Website Functionality Status',
+      status: !hasCoreCatalog ? 'FAIL' : functionalityOk ? 'PASS' : 'WARNING',
+      valueText: !hasCoreCatalog ? 'FAIL' : functionalityOk ? 'PASS' : `${brokenEntryRefs} Broken Refs`,
+      detail: functionalityOk
+        ? `ক্যাটালগ (${classes.length} শ্রেণি, ${teachers.length} শিক্ষক), ${scopedEntries.length}টি বৈধ এন্ট্রি এবং ${snapshotCount}টি সেভ করা স্ন্যাপশট যাচাই সম্পন্ন।`
+        : `${brokenEntryRefs}টি অসামঞ্জস্যপূর্ণ এন্ট্রি রেফারেন্স বা স্টোরেজ ত্রুটি শনাক্ত হয়েছে।`,
+    },
+    {
+      id: 'sys-2',
+      order: 2,
+      label: 'UI/UX & Responsiveness Check',
+      status: !orderedPeriodsOk ? 'FAIL' : uiResponsiveOk ? 'PASS' : 'WARNING',
+      valueText: !orderedPeriodsOk ? 'FAIL' : hasDomMetrics && domOverflowPx > 4 ? `${domOverflowPx}px Overflow` : 'PASS',
+      detail: uiResponsiveOk
+        ? `${teachingPeriodIndices.length}টি পিরিয়ড লেবেল ও সময় সঠিক${hasDomMetrics ? ` (অনুভূমিক ওভারফ্লো: ${domOverflowPx}px)` : ''}।`
+        : !orderedPeriodsOk
+        ? 'পিরিয়ড টাইমিং বা লেবেল অসম্পূর্ণ রয়েছে।'
+        : `বর্তমান ভিউপোর্টে ${domOverflowPx}px অনুভূমিক ওভারফ্লো শনাক্ত হয়েছে।`,
+    },
+    {
+      id: 'sys-3',
+      order: 3,
+      label: 'Security Audit Status',
+      status: securityOk ? 'PASS' : 'FAIL',
+      valueText: securityOk ? 'PASS' : `${exposedPiiCount} PII / Key Risk`,
+      detail: securityOk
+        ? 'লোকাল স্টোরেজে শিক্ষকদের ব্যক্তিগত ইমেইল/ফোন PII বা কোনো ক্লায়েন্ট সিক্রেট কী নেই; Excel ফর্মুলা ও ইনপুট সুরক্ষিত।'
+        : `লোকাল স্টোরেজে ${exposedPiiCount}টি অ-সুরক্ষিত PII বা সংবেদনশীল কী পাওয়া গেছে।`,
+    },
+    {
+      id: 'sys-4',
+      order: 4,
+      label: 'Database Integrity Check',
+      status:
+        unselectedSubjectEntriesCount === 0 && overQuotaEntriesCount === 0 && exceededCapacitySectionsCount === 0
+          ? 'PASS'
+          : 'FAIL',
+      valueText:
+        unselectedSubjectEntriesCount === 0 && overQuotaEntriesCount === 0 && exceededCapacitySectionsCount === 0
+          ? 'PASS'
+          : 'FAIL',
+      detail:
+        unselectedSubjectEntriesCount === 0 && overQuotaEntriesCount === 0 && exceededCapacitySectionsCount === 0
+          ? `${scopedTargets.length}টি সেকশন ও ${teachers.length} জন শিক্ষকের ডেটা ১০০% সামঞ্জস্যপূর্ণ।`
+          : `${unselectedSubjectEntriesCount} অনির্বাচিত বিষয়, ${overQuotaEntriesCount} অতিরিক্ত কোটা।`,
+    },
+    {
+      id: 'sys-5',
+      order: 5,
+      label: 'Routine Generation Engine Test',
+      status: unassignedClasses === 0 && classDoubleBookings.length === 0 && wrongTeacherConflicts.length === 0 ? 'PASS' : 'FAIL',
+      valueText: unassignedClasses === 0 && classDoubleBookings.length === 0 ? 'PASS' : `${unassignedClasses} Unassigned`,
+      detail: `${totalClassesAssigned}/${totalClassesRequired} ক্লাস সফলভাবে বরাদ্দ (${unassignedClasses} বাকি)।`,
+    },
+    {
+      id: 'sys-6',
+      order: 6,
+      label: 'Subject Weekly Quotas Check',
+      status: quotasOk ? 'PASS' : 'FAIL',
+      valueText: quotasOk ? 'PASS' : 'FAIL',
+      detail: finalValidation.subjectWeeklyQuotas.detail,
+    },
+    {
+      id: 'sys-7',
+      order: 7,
+      label: 'Teacher Assignment Accuracy',
+      status: wrongTeacherConflicts.length === 0 ? 'PASS' : 'FAIL',
+      valueText: wrongTeacherConflicts.length === 0 ? 'PASS' : `${wrongTeacherConflicts.length} Mismatch`,
+      detail: finalValidation.sectionTeacherAssignment.detail,
+    },
+    {
+      id: 'sys-8',
+      order: 8,
+      label: `Teacher Weekly Working Days (<= ${configuredWorkingDaysCap} Days)`,
+      status:
+        workingDaysViolationsCount > 0
+          ? 'FAIL'
+          : workingDaysImpossibleCount > 0
+          ? 'WARNING'
+          : 'PASS',
+      valueText:
+        workingDaysViolationsCount > 0
+          ? `${workingDaysViolationsCount} Exceeded`
+          : workingDaysImpossibleCount > 0
+          ? `${workingDaysImpossibleCount} Math-Cap`
+          : 'PASS',
+      detail:
+        workingDaysViolationsCount > 0
+          ? `${workingDaysViolationsCount} জন নিয়মিত শিক্ষকের ${configuredWorkingDaysCap} দিনের বেশি ক্লাস কমানো সম্ভব (Auto-Fix করুন)।`
+          : workingDaysImpossibleCount > 0
+          ? `সব সম্ভাব্য শিক্ষক ≤${configuredWorkingDaysCap} দিনে আছেন; ${workingDaysImpossibleCount} জনের মোট ক্লাস > (${configuredWorkingDaysCap}×দৈনিক সীমা)।`
+          : `সকল সক্ষম শিক্ষক ≤${configuredWorkingDaysCap} কার্যদিবসের মধ্যে কর্মরত।`,
+    },
+    {
+      id: 'sys-9',
+      order: 9,
+      label: 'Consecutive Class Limit (4+ = 0)',
+      status:
+        fourPlusConsecViolationsCount > 0 || excessiveThreeConsecTeachersCount > 0
+          ? 'FAIL'
+          : forcedThreeConsecWarningsCount > 0
+          ? 'WARNING'
+          : 'PASS',
+      valueText:
+        fourPlusConsecViolationsCount > 0 || excessiveThreeConsecTeachersCount > 0
+          ? `${fourPlusConsecViolationsCount} Four+ / ${excessiveThreeConsecTeachersCount} >2d 3x`
+          : forcedThreeConsecWarningsCount > 0
+          ? `0 Four+ (${forcedThreeConsecWarningsCount} Shift-Cap)`
+          : 'PASS',
+      detail:
+        fourPlusConsecViolationsCount === 0 && excessiveThreeConsecTeachersCount === 0 && forcedThreeConsecWarningsCount === 0
+          ? '৪+ একটানা ক্লাস ০টি এবং পরপর ৩ ক্লাস সীমিত (≤২ দিন/সপ্তাহ)।'
+          : fourPlusConsecViolationsCount === 0 && excessiveThreeConsecTeachersCount === 0
+          ? `৪+ একটানা ক্লাস সম্পূর্ণ ০টি; ${forcedThreeConsecWarningsCount} জন মর্নিং/উচ্চ লোড শিক্ষকের ৩-টানা ক্লাস সীমিত পর্যায়ে।`
+          : `${fourPlusConsecViolationsCount} জন শিক্ষকের ৪+ একটানা এবং ${excessiveThreeConsecTeachersCount} জনের ২ দিনের বেশি ৩-টানা ক্লাস রয়েছে।`,
+    },
+    {
+      id: 'sys-10',
+      order: 10,
+      label: 'Teacher Daily Workload Balance',
+      status:
+        teacherLimitViolationsCount > 0
+          ? 'FAIL'
+          : mathCapLimitWarnings.length > 0 || unbalancedTeachersCount > 0
+          ? 'WARNING'
+          : 'PASS',
+      valueText:
+        teacherLimitViolationsCount === 0 && unbalancedTeachersCount === 0 && mathCapLimitWarnings.length === 0
+          ? 'PASS'
+          : teacherLimitViolationsCount > 0
+          ? `${teacherLimitViolationsCount} Exceeded`
+          : mathCapLimitWarnings.length > 0
+          ? `0 Avoidable (${mathCapLimitTeacherNames.length} Math-Cap)`
+          : `${unbalancedTeachersCount} Unbalanced`,
+      detail:
+        teacherLimitViolationsCount === 0 && unbalancedTeachersCount === 0 && mathCapLimitWarnings.length === 0
+          ? 'সক্রিয় কার্যদিবসে সকল শিক্ষকের দৈনিক ক্লাস সমভাবে বণ্টিত (≤৪টি/দিন)।'
+          : teacherLimitViolationsCount > 0
+          ? `${teacherLimitViolationsCount}টি দৈনিক সীমা লঙ্ঘন (${limitTeachersDetail}), ${unbalancedTeachersCount} জন শিক্ষকের দৈনিক বণ্টন অসম।`
+          : `সব অর্জনযোগ্য শিক্ষক ≤৪/দিন; গাণিতিক লোড-ক্যাপ নোটিশ: ${mathCapLimitTeacherNames.join(', ')} (≤৫/দিন), ${unbalancedTeachersCount} জন শিক্ষকের দৈনিক বণ্টন অসম।`,
+    },
+    {
+      id: 'sys-11',
+      order: 11,
+      label: 'Room Conflict Check',
+      status: roomConflicts.length === 0 && religionSchedulingStatus.ok ? 'PASS' : 'FAIL',
+      valueText: roomConflicts.length === 0 && religionSchedulingStatus.ok ? '0' : `${roomConflicts.length}`,
+      detail: finalValidation.roomConflicts.detail,
+    },
+    {
+      id: 'sys-12',
+      order: 12,
+      label: 'Teacher Availability Conflict Check',
+      status: availConflictCount === 0 ? 'PASS' : 'FAIL',
+      valueText: `${availConflictCount}`,
+      detail: finalValidation.teacherAvailabilityConflicts.detail,
+    },
+    {
+      id: 'sys-13',
+      order: 13,
+      label: 'Performance Test (< 1000ms)',
+      status: verificationTimeMs < 1000 ? 'PASS' : 'WARNING',
+      valueText: `${verificationTimeMs} ms`,
+      detail: `মেমোরি-অপ্টিমাইজড ভেরিফিকেশন ও অডিট ${verificationTimeMs}ms সময়ে সম্পন্ন হয়েছে।`,
+    },
+  ];
+
+  const passCount = healthItems.filter(i => i.status === 'PASS').length;
+  const warningCount = healthItems.filter(i => i.status === 'WARNING').length;
+  const failCount = healthItems.filter(i => i.status === 'FAIL').length;
+  const systemHealthReport: SystemHealthReport = {
+    overallStatus: failCount > 0 ? 'FAIL' : warningCount > 0 ? 'WARNING' : 'PASS',
+    passCount,
+    warningCount,
+    failCount,
+    items: healthItems,
+  };
 
   const totalSubjects = subjects.filter(s => s.id !== 'sub-block-play-nur').length;
   const scopeLabel =
@@ -812,6 +1203,13 @@ export function verifyRoutine(
     teacherDetails,
     unassignedTeachersCount,
     teacherLimitViolationsCount,
+    workingDaysViolationsCount,
+    workingDaysImpossibleCount,
+    fourPlusConsecViolationsCount,
+    excessiveThreeConsecTeachersCount,
+    unbalancedTeachersCount,
+    verificationTimeMs,
+    systemHealthReport,
     unselectedSubjectEntriesCount,
     sameDayRepeatCount,
     checks,

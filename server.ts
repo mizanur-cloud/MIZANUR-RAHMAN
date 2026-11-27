@@ -201,18 +201,40 @@ async function requireActiveAdmin(req: AuthenticatedReq, res: Response, next: Ne
       status,
     };
     return next();
-  } catch (err: any) {
+  } catch (err) {
+    console.warn('RBAC session verification failed:', err instanceof Error ? err.message : 'Unknown error');
     return res.status(401).json({
-      error: `সেশন যাচাই ব্যর্থ হয়েছে: ${err?.message || 'অবৈধ টোকেন'}`,
+      error: 'সেশন যাচাই ব্যর্থ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।',
     });
   }
 }
 
+const ALLOWED_PARSE_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+]);
+const MAX_PARSE_FILE_BYTES = 15 * 1024 * 1024; // 15 MB binary limit
+
 const app = express();
 const port = 3000;
+app.disable('x-powered-by');
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  // Never set X-Frame-Options or frame-ancestors so AI Studio preview iframe works cleanly
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+app.use(express.json({ limit: '22mb' }));
+app.use(express.urlencoded({ extended: true, limit: '22mb' }));
 
 // Server-side RBAC session verification endpoint
 app.get('/api/auth/status', async (req: Request, res: Response) => {
@@ -235,34 +257,61 @@ app.get('/api/auth/status', async (req: Request, res: Response) => {
   }
 });
 
-// Direct APK download route with appropriate attachment headers
-app.get(['/IDSC_Routine.apk', '/api/download-apk'], (_req: Request, res: Response) => {
-  const publicApk = path.resolve(__dirname, 'public', 'IDSC_Routine.apk');
-  const distApk = path.resolve(__dirname, 'dist', 'IDSC_Routine.apk');
-  const targetApk = fs.existsSync(publicApk) ? publicApk : distApk;
-
-  if (fs.existsSync(targetApk)) {
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    return res.download(targetApk, 'IDSC_Routine.apk');
-  }
-  return res.status(404).send('APK file not found. Please refresh.');
-});
-
 // Protected API route to parse schedule files (Active Admin & Super Admin only)
 app.post('/api/parse-schedule-file', requireActiveAdmin, async (req: AuthenticatedReq, res: Response) => {
   try {
-    const { base64Data, mimeType, fileName } = req.body;
+    const { base64Data, mimeType, fileName } = req.body ?? {};
 
-    if (!base64Data || !mimeType) {
-      return res.status(400).json({ error: 'Missing base64Data or mimeType' });
+    if (typeof base64Data !== 'string' || base64Data.length === 0 || typeof mimeType !== 'string') {
+      return res.status(400).json({ error: 'Invalid or missing file payload' });
     }
+
+    const EXT_MIME_FALLBACK: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf',
+      '.txt': 'text/plain',
+      '.csv': 'text/csv',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+    const rawMime = mimeType.trim().toLowerCase();
+    const ext = typeof fileName === 'string' ? path.extname(fileName.trim()).toLowerCase() : '';
+    const normalizedMime =
+      !rawMime || rawMime === 'application/octet-stream'
+        ? EXT_MIME_FALLBACK[ext] || rawMime
+        : rawMime;
+
+    if (!ALLOWED_PARSE_MIME_TYPES.has(normalizedMime)) {
+      return res.status(400).json({
+        error: 'Unsupported file type. Allowed formats: PNG, JPG, WEBP, PDF, TXT, CSV, DOC, DOCX.',
+      });
+    }
+
+    const cleanBase64 = base64Data.trim();
+    const decodedBytes = Buffer.byteLength(cleanBase64, 'base64');
+    if (decodedBytes <= 0 || decodedBytes > MAX_PARSE_FILE_BYTES) {
+      return res.status(413).json({
+        error: 'Uploaded file exceeds the 15 MB size limit.',
+      });
+    }
+
+    const safeFileName =
+      typeof fileName === 'string'
+        ? fileName.replace(/[\r\n\t"'`\\<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'schedule_upload'
+        : 'schedule_upload';
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not set on server' });
+      return res.status(500).json({ error: 'AI parsing service is not configured on the server.' });
     }
 
-    const ai = new GoogleGenAI({});
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    });
 
     const systemInstruction = `You are a school routine and timetable data extraction specialist.
 Analyze the provided document, image, or text file containing school routine information.
@@ -305,11 +354,11 @@ Return STRICT JSON conforming to this schema without any markdown wrapping or ex
   ]
 }`;
 
-    const prompt = `Please extract the complete school routine timetable from this uploaded file: "${fileName}".
+    const prompt = `Please extract the complete school routine timetable from this uploaded file: "${safeFileName}".
 Identify the class name, section, day of week, period number, subject, and teacher for every class in the routine.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: [
         {
           role: 'user',
@@ -317,8 +366,8 @@ Identify the class name, section, day of week, period number, subject, and teach
             { text: prompt },
             {
               inlineData: {
-                mimeType,
-                data: base64Data,
+                mimeType: normalizedMime,
+                data: cleanBase64,
               },
             },
           ],
@@ -330,12 +379,16 @@ Identify the class name, section, day of week, period number, subject, and teach
       },
     });
 
-    const text = response.text || '{}';
-    const parsed = JSON.parse(text);
+    const rawText = (response.text || '{}')
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+    const parsed = JSON.parse(rawText);
     return res.json({ success: true, data: parsed });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error in /api/parse-schedule-file:', error);
-    return res.status(500).json({ error: error?.message || 'Failed to parse file with AI' });
+    return res.status(500).json({ error: 'AI দিয়ে ফাইল পার্স করতে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।' });
   }
 });
 

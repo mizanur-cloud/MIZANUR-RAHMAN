@@ -1,5 +1,5 @@
 import { INITIAL_CLASSES, INITIAL_SETTINGS, INITIAL_SUBJECTS, INITIAL_TEACHERS, INITIAL_TIMETABLE_ENTRIES } from '../data/initialData';
-import { DailyAbsenceRecord, ProxyLogEntry, SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
+import { DailyAbsenceRecord, ProxyLogEntry, RoutineSnapshot, SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
 import { syncTeacherAssignmentsToClasses } from './teacherSubjectSync';
 import { isPlayOrNursery } from './parallelSubjects';
 
@@ -13,7 +13,11 @@ const STORAGE_KEYS = {
   DAILY_ABSENCES: 'school_routine_daily_absences_v1',
   POLICY_V2: 'school_routine_policy_v2_migrated',
   POLICY_V3: 'school_routine_policy_v3_migrated',
+  POLICY_V4: 'school_routine_policy_v4_migrated',
 };
+
+export const SNAPSHOTS_STORAGE_KEY = 'school_routine_snapshots_v1';
+export const MAX_ROUTINE_SNAPSHOTS = 10;
 
 export interface AppState {
   classes: SchoolClass[];
@@ -21,6 +25,41 @@ export interface AppState {
   subjects: Subject[];
   settings: SchoolSettings;
   entries: TimetableEntry[];
+}
+
+export function stripTeacherPii(teachers: Teacher[]): Teacher[] {
+  return teachers.map(({ email: _email, phone: _phone, ...rest }) => rest as Teacher);
+}
+
+export function clearSensitiveOfflineCaches(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.PROXY_LOGS);
+    localStorage.removeItem(STORAGE_KEYS.DAILY_ABSENCES);
+    const rawTeachers = localStorage.getItem(STORAGE_KEYS.TEACHERS);
+    if (rawTeachers) {
+      const parsed = JSON.parse(rawTeachers);
+      if (Array.isArray(parsed) && parsed.some((t: Teacher) => Boolean(t?.email || t?.phone))) {
+        localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(stripTeacherPii(parsed)));
+      }
+    }
+    const rawSnaps = localStorage.getItem(SNAPSHOTS_STORAGE_KEY);
+    if (rawSnaps) {
+      const snaps = JSON.parse(rawSnaps);
+      if (
+        Array.isArray(snaps) &&
+        snaps.some((s: RoutineSnapshot) => s?.state?.teachers?.some((t: Teacher) => Boolean(t?.email || t?.phone)))
+      ) {
+        const sanitizedSnaps = snaps.map((s: RoutineSnapshot) =>
+          s?.state?.teachers
+            ? { ...s, state: { ...s.state, teachers: stripTeacherPii(s.state.teachers) } }
+            : s
+        );
+        localStorage.setItem(SNAPSHOTS_STORAGE_KEY, JSON.stringify(sanitizedSnaps));
+      }
+    }
+  } catch {
+    // Ignore storage access errors
+  }
 }
 
 export function loadStoredData(): AppState {
@@ -32,6 +71,7 @@ export function loadStoredData(): AppState {
     const rawEntries = localStorage.getItem(STORAGE_KEYS.ENTRIES);
     const hasMigratedV2 = localStorage.getItem(STORAGE_KEYS.POLICY_V2) === 'true';
     const hasMigratedV3 = localStorage.getItem(STORAGE_KEYS.POLICY_V3) === 'true';
+    const hasMigratedV4 = localStorage.getItem(STORAGE_KEYS.POLICY_V4) === 'true';
 
     const parsedSettings: SchoolSettings = rawSettings ? JSON.parse(rawSettings) : { ...INITIAL_SETTINGS };
     if (parsedSettings && (parsedSettings.schoolName === 'Ideal Model High School & College' || !parsedSettings.schoolName)) {
@@ -49,7 +89,7 @@ export function loadStoredData(): AppState {
     }
 
     let loadedSubjects: Subject[] = rawSubjects ? JSON.parse(rawSubjects) : INITIAL_SUBJECTS;
-    let loadedTeachers: Teacher[] = rawTeachers ? JSON.parse(rawTeachers) : INITIAL_TEACHERS;
+    let loadedTeachers: Teacher[] = stripTeacherPii(rawTeachers ? JSON.parse(rawTeachers) : INITIAL_TEACHERS);
     let loadedClasses: SchoolClass[] = rawClasses ? JSON.parse(rawClasses) : INITIAL_CLASSES;
     let loadedEntries: TimetableEntry[] = rawEntries ? JSON.parse(rawEntries) : INITIAL_TIMETABLE_ENTRIES;
 
@@ -186,32 +226,29 @@ export function loadStoredData(): AppState {
     }
 
     // One-time Policy V3 upgrade:
-    // 1. Migrate legacy 'Hindu Religion Room' entries to configured combined room ('307')
-    // 2. Ensure Tapash Sir & Karim Sir have daily limit >= 5 so combined religious schedule is never blocked
+    // Migrate legacy 'Hindu Religion Room' entries to configured combined room ('307')
     if (!hasMigratedV3) {
       const targetHinduRoom = parsedSettings.religionSchedule?.hinduRoom || '307';
       loadedEntries = loadedEntries.map(e =>
         e.room === 'Hindu Religion Room' ? { ...e, room: targetHinduRoom } : e
       );
-      loadedTeachers = loadedTeachers.map(t => {
-        if (t.id === 'tch-tapash') {
-          return {
-            ...t,
-            maxDailyPeriods: Math.max(5, t.maxDailyPeriods || 0),
-            maxConsecutivePeriods: Math.max(3, t.maxConsecutivePeriods || 0),
-          };
-        }
-        if (t.id === 'tch-karim') {
-          return {
-            ...t,
-            maxDailyPeriods: Math.max(5, t.maxDailyPeriods || 0),
-          };
-        }
-        return t;
-      });
       localStorage.setItem(STORAGE_KEYS.POLICY_V3, 'true');
-      localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(loadedTeachers));
       localStorage.setItem(STORAGE_KEYS.ENTRIES, JSON.stringify(loadedEntries));
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
+    }
+
+    // One-time Policy V4 upgrade:
+    // Enforce school-wide policy: max 4 daily periods per teacher and 5 weekly working days
+    if (!hasMigratedV4) {
+      parsedSettings.defaultMaxDailyPeriods = 4;
+      parsedSettings.defaultMaxWorkingDays = 5;
+      loadedTeachers = loadedTeachers.map(t => ({
+        ...t,
+        maxDailyPeriods: Math.min(4, Math.max(1, t.maxDailyPeriods || 4)),
+        maxWorkingDays: 5,
+      }));
+      localStorage.setItem(STORAGE_KEYS.POLICY_V4, 'true');
+      localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(stripTeacherPii(loadedTeachers)));
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
     }
 
@@ -281,7 +318,7 @@ export function loadStoredData(): AppState {
 
     return {
       classes: loadedClasses,
-      teachers: loadedTeachers,
+      teachers: stripTeacherPii(loadedTeachers),
       subjects: loadedSubjects,
       settings: parsedSettings,
       entries: loadedEntries,
@@ -290,7 +327,7 @@ export function loadStoredData(): AppState {
     console.error('Failed to load data from localStorage:', err);
     return {
       classes: INITIAL_CLASSES,
-      teachers: INITIAL_TEACHERS,
+      teachers: stripTeacherPii(INITIAL_TEACHERS),
       subjects: INITIAL_SUBJECTS,
       settings: INITIAL_SETTINGS,
       entries: INITIAL_TIMETABLE_ENTRIES,
@@ -301,7 +338,7 @@ export function loadStoredData(): AppState {
 export function saveStoredData(state: Partial<AppState>) {
   try {
     if (state.classes) localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(state.classes));
-    if (state.teachers) localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(state.teachers));
+    if (state.teachers) localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(stripTeacherPii(state.teachers)));
     if (state.subjects) localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(state.subjects));
     if (state.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(state.settings));
     if (state.entries) localStorage.setItem(STORAGE_KEYS.ENTRIES, JSON.stringify(state.entries));
@@ -315,12 +352,13 @@ export function resetToDefaults(): AppState {
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(STORAGE_KEYS.POLICY_V2, 'true');
     localStorage.setItem(STORAGE_KEYS.POLICY_V3, 'true');
+    localStorage.setItem(STORAGE_KEYS.POLICY_V4, 'true');
   } catch (err) {
     console.error('Failed to clear localStorage:', err);
   }
   return {
     classes: INITIAL_CLASSES,
-    teachers: INITIAL_TEACHERS,
+    teachers: stripTeacherPii(INITIAL_TEACHERS),
     subjects: INITIAL_SUBJECTS,
     settings: INITIAL_SETTINGS,
     entries: INITIAL_TIMETABLE_ENTRIES,
@@ -386,5 +424,75 @@ export function saveStoredDailyAbsences(map: Record<string, DailyAbsenceRecord>)
     localStorage.setItem(STORAGE_KEYS.DAILY_ABSENCES, JSON.stringify(map));
   } catch {
     // Ignore storage quota errors
+  }
+}
+
+export function loadRoutineSnapshots(): RoutineSnapshot[] {
+  try {
+    const raw = localStorage.getItem(SNAPSHOTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s): s is RoutineSnapshot =>
+        Boolean(s && typeof s.id === 'string' && typeof s.label === 'string' && s.state && Array.isArray(s.state.entries))
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveRoutineSnapshot(label: string, state: AppState): RoutineSnapshot | null {
+  try {
+    const existing = loadRoutineSnapshots();
+    const clonedState: AppState = JSON.parse(JSON.stringify({
+      classes: state.classes,
+      teachers: stripTeacherPii(state.teachers),
+      subjects: state.subjects,
+      settings: state.settings,
+      entries: state.entries,
+    }));
+    const snapshot: RoutineSnapshot = {
+      id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      label: label.trim().slice(0, 120) || 'Routine Snapshot',
+      entryCount: clonedState.entries.length,
+      state: clonedState,
+    };
+
+    const nextList = [snapshot, ...existing].slice(0, MAX_ROUTINE_SNAPSHOTS);
+    while (nextList.length > 0) {
+      try {
+        localStorage.setItem(SNAPSHOTS_STORAGE_KEY, JSON.stringify(nextList));
+        return snapshot;
+      } catch {
+        // Trim oldest snapshot when localStorage quota is tight
+        if (nextList.length === 1) {
+          return null;
+        }
+        nextList.pop();
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function deleteRoutineSnapshot(id: string): RoutineSnapshot[] {
+  const next = loadRoutineSnapshots().filter(s => s.id !== id);
+  try {
+    localStorage.setItem(SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore storage quota errors
+  }
+  return next;
+}
+
+export function clearRoutineSnapshots(): void {
+  try {
+    localStorage.removeItem(SNAPSHOTS_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
   }
 }

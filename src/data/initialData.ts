@@ -135,7 +135,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     phone: '+880 1718-901234',
     subjectIds: ['sub-rel'],
     maxConsecutivePeriods: 2,
-    maxDailyPeriods: 5,
+    maxDailyPeriods: 4,
   },
   {
     id: 'tch-zinat',
@@ -231,7 +231,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     phone: '+880 1726-112233',
     subjectIds: ['sub-agr', 'sub-bgs', 'sub-soc'],
     maxConsecutivePeriods: 2,
-    maxDailyPeriods: 5,
+    maxDailyPeriods: 4,
     noProxy: true, // মোয়াজ্জেম স্যার কে প্রক্সি ক্লাস দেয়া যাবে না
   },
   {
@@ -243,7 +243,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     phone: '+880 1727-445566',
     subjectIds: ['sub-hin', 'sub-ban'],
     maxConsecutivePeriods: 3,
-    maxDailyPeriods: 5,
+    maxDailyPeriods: 4,
   },
   // Balanced Subject Faculty (Bengali)
   { id: 'tch-nusrat', name: 'Ms. Nusrat Jahan', initials: 'NJ', designation: 'Teacher (Bengali & Arts)', email: 'nusrat@school.edu', phone: '+880 1728-100001', subjectIds: ['sub-ban', 'sub-art'], maxConsecutivePeriods: 2, maxDailyPeriods: 4 },
@@ -318,6 +318,8 @@ export const INITIAL_SETTINGS: SchoolSettings = {
     combinedHinduTeacherId: 'tch-tapash',
     combinedSlots: [],
   },
+  defaultMaxDailyPeriods: 4,
+  defaultMaxWorkingDays: 5,
 };
 
 // Preschool & Kindergarten to Class 10

@@ -180,11 +180,16 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
   const [customSubstituteMap, setCustomSubstituteMap] = useState<Record<string, string>>({});
   const [showBusyTeachers, setShowBusyTeachers] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [ruleErrorNotice, setRuleErrorNotice] = useState<string | null>(null);
 
   // Override confirmation modal + Delete confirmation modal + Manual modal
   const [pendingOverride, setPendingOverride] = useState<PendingOverrideRequest | null>(null);
   const [pendingDeleteLog, setPendingDeleteLog] = useState<ProxyLogEntry | null>(null);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+
+  useEffect(() => {
+    setRuleErrorNotice(null);
+  }, [selectedDate]);
 
   // Manual modal form state
   const [manualClassId, setManualClassId] = useState<string>(classes[0]?.id || '');
@@ -372,8 +377,15 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
       ignoreProxyLogId: slot.savedLog?.id,
     });
     const candidate = evalRes.freeCandidates.find(c => c.teacher.id === substituteTeacherId);
-    if (!candidate) return;
+    if (!candidate) {
+      const busyMatch = evalRes.busyCandidates.find(b => b.teacher.id === substituteTeacherId);
+      if (busyMatch) {
+        setRuleErrorNotice(`${busyMatch.teacher.name}: ${busyMatch.reason}`);
+      }
+      return;
+    }
 
+    setRuleErrorNotice(null);
     setCustomSubstituteMap(prev => ({ ...prev, [slot.slotKey]: substituteTeacherId }));
     await handleAssignCandidate(slot, candidate);
   };
@@ -457,8 +469,17 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
     }
   };
 
-  // Assign a candidate to focusedSlot (with overload warning & override confirmation)
+  // Assign a candidate to focusedSlot (hard clashes cannot be overridden; workload limits trigger Admin Override)
   const handleAssignCandidate = async (slot: SlotItem, candidate: RankedProxyCandidate) => {
+    if (candidate.limitEval.hasHardClash) {
+      const clashMsg =
+        candidate.limitEval.warnings.find(w => w.severity === 'error')?.message ||
+        `${candidate.teacher.name}-কে এই প্রক্সি ক্লাসে বরাদ্দ করা যাবে না (দিনে ১টির বেশি প্রক্সি বা টাইম ক্ল্যাশ অনুমোদিত নয়)।`;
+      setRuleErrorNotice(clashMsg);
+      return;
+    }
+
+    setRuleErrorNotice(null);
     if (candidate.limitEval.requiresOverride && candidate.limitEval.warnings.length > 0) {
       const warningTexts = candidate.limitEval.warnings.map(w => w.message);
       const { log, isNew } = buildLogEntryFromSlot(slot, candidate, warningTexts.join(' | '));
@@ -483,6 +504,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
 
     const batchItems: { log: ProxyLogEntry; isNew: boolean }[] = [];
     const overrideWarnings: string[] = [];
+    const blockedErrors: string[] = [];
 
     for (const slot of unsavedMatched) {
       const subId = slot.autoSuggestion!.substituteTeacherId;
@@ -502,7 +524,19 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
         subjects,
       });
       const candidate = evalRes.freeCandidates.find(c => c.teacher.id === subId);
-      if (!candidate) continue;
+      if (!candidate) {
+        const busy = evalRes.busyCandidates.find(b => b.teacher.id === subId);
+        if (busy) blockedErrors.push(`${busy.teacher.name}: ${busy.reason}`);
+        continue;
+      }
+
+      if (candidate.limitEval.hasHardClash) {
+        const msg =
+          candidate.limitEval.warnings.find(w => w.severity === 'error')?.message ||
+          `${candidate.teacher.name} (${slot.periodLabel}): নিয়ম লঙ্ঘন।`;
+        blockedErrors.push(msg);
+        continue;
+      }
 
       if (candidate.limitEval.requiresOverride && candidate.limitEval.warnings.length > 0) {
         const msg = `${candidate.teacher.name} (${slot.periodLabel}, ${slot.className}): ${candidate.limitEval.warnings.map(w => w.message).join(' ')}`;
@@ -511,6 +545,12 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
       } else {
         batchItems.push(buildLogEntryFromSlot(slot, candidate));
       }
+    }
+
+    if (blockedErrors.length > 0) {
+      setRuleErrorNotice(blockedErrors[0]);
+    } else {
+      setRuleErrorNotice(null);
     }
 
     if (batchItems.length === 0) return;
@@ -913,17 +953,22 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                     </p>
                   </div>
                 </div>
-                <div className="mt-2.5 inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
-                  <span>🛡️ প্রক্সি মুক্ত:</span>
-                  <span>
-                    কো-অর্ডিনেটর, প্লে/নার্সারি ব্লক শিক্ষক ও মোয়াজ্জেম স্যার প্রক্সি তালিকা থেকে স্বয়ংক্রিয়ভাবে বাদ থাকবেন
-                    {(() => {
-                      const exempted = teachers.filter(t => !isEligibleForProxy(t, classes));
-                      return exempted.length > 0
-                        ? ` (${exempted.map(t => t.initials || t.name).join(', ')})`
-                        : '';
-                    })()}
-                  </span>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                    <span>🛡️ প্রক্সি মুক্ত:</span>
+                    <span>
+                      কো-অর্ডিনেটর, প্লে/নার্সারি ব্লক শিক্ষক ও মোয়াজ্জেম স্যার প্রক্সি তালিকা থেকে স্বয়ংক্রিয়ভাবে বাদ থাকবেন
+                      {(() => {
+                        const exempted = teachers.filter(t => !isEligibleForProxy(t, classes));
+                        return exempted.length > 0
+                          ? ` (${exempted.map(t => t.initials || t.name).join(', ')})`
+                          : '';
+                      })()}
+                    </span>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                    <span>📌 দৈনিক প্রক্সি সীমা: একজন শিক্ষককে দিনে সর্বোচ্চ ১টি প্রক্সি ক্লাস দেওয়া যাবে</span>
+                  </div>
                 </div>
               </div>
 
@@ -1013,6 +1058,23 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                 <span>
                   নির্বাচিত তারিখটি ({selectedDate}, {BENGALI_DAY_NAMES[selectedDay]}) নিয়মিত কার্যদিবস নয়। রুটিন অনুযায়ী প্রক্সি দেখতে উপরের কার্যদিবস বাটনে ক্লিক করুন বা ম্যানুয়াল প্রক্সি যোগ করুন।
                 </span>
+              </div>
+            )}
+
+            {ruleErrorNotice && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                  <span className="font-semibold">{ruleErrorNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRuleErrorNotice(null)}
+                  className="text-rose-500 hover:text-rose-800 dark:hover:text-rose-200 shrink-0"
+                  aria-label="Close notice"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>
@@ -1560,6 +1622,8 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                                   ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
                                   : busy.reasonCode === 'exempt'
                                   ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
+                                  : busy.reasonCode === 'daily_proxy_limit'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
                                   : 'bg-stone-200 text-stone-700 dark:bg-slate-700 dark:text-slate-300'
                               }`}
                             >
@@ -1774,12 +1838,14 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                 <button
                   type="button"
                   onClick={() =>
-                    exportProxyReportExcel({
+                    void exportProxyReportExcel({
                       logs: filteredReportLogs,
                       teacherSummaryRows,
                       filterLabel: reportRangeLabel,
                       settings,
                       kpis: reportKpis,
+                    }).catch(err => {
+                      console.error('Proxy Excel export failed:', err);
                     })
                   }
                   className="min-h-[38px] px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5"
@@ -2271,6 +2337,18 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                     </option>
                   ))}
                 </select>
+                {(() => {
+                  const limitedToday = manualCandidates.busyCandidates.filter(
+                    b => b.reasonCode === 'daily_proxy_limit'
+                  );
+                  if (limitedToday.length === 0) return null;
+                  return (
+                    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                      দিনে ১টির বেশি প্রক্সি দেওয়া যাবে না — আজ ইতোমধ্যে ১টি প্রক্সি থাকায় বাদ:{' '}
+                      {limitedToday.map(b => b.teacher.name).join(', ')}
+                    </p>
+                  );
+                })()}
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

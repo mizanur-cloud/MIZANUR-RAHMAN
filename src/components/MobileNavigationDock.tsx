@@ -233,7 +233,9 @@ export const MobileNavigationDock: React.FC<MobileNavigationDockProps> = ({
             <Menu className="w-[19px] h-[19px]" />
             <span className="text-[10px] leading-none tracking-tight">মেনু</span>
             {canEdit && totalIssues > 0 && (
-              <span className="absolute top-2 right-5 w-2 h-2 rounded-full bg-amber-500" />
+              <span className="absolute top-1.5 right-3 text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                {totalIssues}
+              </span>
             )}
           </button>
         </div>
@@ -496,14 +498,17 @@ export const MobileNavigationDock: React.FC<MobileNavigationDockProps> = ({
                     <span className="truncate">{copiedLink ? 'লিংক কপি হয়েছে!' : 'শেয়ার লিংক'}</span>
                   </button>
 
-                  <a
-                    href="/IDSC_Routine.apk"
-                    download="IDSC_Routine.apk"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpenMenu(false);
+                      onOpenHelpAndInstall();
+                    }}
                     className="min-h-[44px] px-3 py-2.5 rounded-xl border border-stone-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-stone-800 dark:text-slate-200 flex items-center gap-2 text-left"
                   >
                     <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                    <span className="truncate">Android APK</span>
-                  </a>
+                    <span className="truncate">অ্যাপ ইনস্টল (PWA)</span>
+                  </button>
 
                   <button
                     type="button"

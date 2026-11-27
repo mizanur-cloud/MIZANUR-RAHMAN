@@ -14,6 +14,7 @@ import {
   ProxyLogEntry,
   ProxyLogStatus,
   RoutineConflict,
+  RoutineSnapshot,
   SchoolClass,
   Subject,
   Teacher,
@@ -21,10 +22,12 @@ import {
 } from './types';
 import {
   AppState,
+  clearSensitiveOfflineCaches,
   loadStoredDailyAbsences,
   loadStoredData,
   loadStoredProxyLogs,
   resetToDefaults,
+  saveRoutineSnapshot,
   saveStoredDailyAbsences,
   saveStoredData,
   saveStoredProxyLogs,
@@ -380,6 +383,9 @@ export default function App() {
     if (!canEdit) {
       setProxyLogs([]);
       setDailyAbsences({});
+      if (authReady) {
+        clearSensitiveOfflineCaches();
+      }
       return;
     }
 
@@ -400,7 +406,7 @@ export default function App() {
       unsubLogs();
       unsubAbs();
     };
-  }, [canEdit]);
+  }, [canEdit, authReady]);
 
   // Instant Action Effect: Immediately revoke open editing modals & restricted tabs if access drops
   useEffect(() => {
@@ -626,6 +632,8 @@ export default function App() {
   };
 
   const handleClearSection = (classId: string, sectionId: string) => {
+    if (!canEdit) return;
+    saveRoutineSnapshot(`সেকশন খালি করার পূর্বে (${classId})`, latestDataRef.current);
     commitData(
       prev => ({
         ...prev,
@@ -1048,6 +1056,12 @@ export default function App() {
   };
 
   const handleDeleteTeacher = (teacherId: string, removeAssignedEntries: boolean = true) => {
+    if (!canEdit) return;
+    saveRoutineSnapshot('শিক্ষক অপসারণের পূর্বে', latestDataRef.current);
+    const remainingIds = latestDataRef.current.teachers
+      .filter(t => t.id !== teacherId)
+      .map(t => t.id);
+
     commitData(prev => {
       const remainingTeachers = prev.teachers.filter(t => t.id !== teacherId);
       const remainingEntries = removeAssignedEntries
@@ -1070,8 +1084,7 @@ export default function App() {
 
     setSelectedTeacherId(currentId => {
       if (currentId === teacherId) {
-        const remaining = data.teachers.filter(t => t.id !== teacherId);
-        return remaining[0]?.id || '';
+        return remainingIds[0] || '';
       }
       return currentId;
     });
@@ -1079,6 +1092,7 @@ export default function App() {
 
   const handleAutoGenerateSection = (classId: string, sectionId: string) => {
     if (!canEdit) return;
+    saveRoutineSnapshot(`সেকশন অটো-রুটিনের পূর্বে (${classId})`, latestDataRef.current);
     const result = generateSmartTimetable(
       data.classes,
       data.teachers,
@@ -1109,6 +1123,7 @@ export default function App() {
 
   const handleAutoGenerateClass = (classId: string) => {
     if (!canEdit) return;
+    saveRoutineSnapshot(`শ্রেণি অটো-রুটিনের পূর্বে (${classId})`, latestDataRef.current);
     const result = generateSmartTimetable(
       data.classes,
       data.teachers,
@@ -1140,6 +1155,7 @@ export default function App() {
     if (!canEdit) {
       throw new Error('অনুমতি নেই: শুধুমাত্র Active Admin বা Super Admin রুটিন তৈরি করতে পারবেন।');
     }
+    saveRoutineSnapshot(`অটো-জেনারেশনের পূর্বে (${options.scope})`, latestDataRef.current);
     const result = generateSmartTimetable(
       data.classes,
       data.teachers,
@@ -1167,6 +1183,7 @@ export default function App() {
     if (!canEdit) {
       throw new Error('অনুমতি নেই: শুধুমাত্র Active Admin বা Super Admin Auto Fix চালাতে পারবেন।');
     }
+    saveRoutineSnapshot('Auto Fix-এর পূর্বে ব্যাকআপ', latestDataRef.current);
     const result = autoFixRoutine(
       data.classes,
       data.teachers,
@@ -1191,6 +1208,7 @@ export default function App() {
 
   const handleResetToDefaults = () => {
     if (!canEdit) return;
+    saveRoutineSnapshot('ফ্যাক্টরি রিসেটের পূর্বে ব্যাকআপ', latestDataRef.current);
     const fresh = resetToDefaults();
     commitData(() => fresh, 'ডিফল্ট রুটিন পুনরায় লোড হয়েছে।', 'routine_reset', 'রুটিন ডিফল্ট অবস্থায় রিসেট করা হয়েছে');
     setSelectedClassId(fresh.classes[7]?.id || fresh.classes[0].id);
@@ -1206,6 +1224,8 @@ export default function App() {
     mode: 'merge' | 'replace',
     newSchoolName?: string
   ) => {
+    if (!canEdit) return;
+    saveRoutineSnapshot(`ফাইল ইম্পোর্টের পূর্বে (${mode})`, latestDataRef.current);
     commitData(prev => {
       const updatedSettings =
         newSchoolName && newSchoolName.trim()
@@ -1248,9 +1268,67 @@ export default function App() {
   };
 
   const handleImportBackup = (newState: AppState) => {
+    if (!canEdit) return;
+    saveRoutineSnapshot('ব্যাকআপ রিস্টোরের পূর্বে', latestDataRef.current);
     commitData(() => newState, 'ব্যাকআপ ডেটা রিস্টোর সম্পন্ন হয়েছে।', 'routine_import', 'JSON ব্যাকআপ রিস্টোর করা হয়েছে');
     if (newState.classes[0]) setSelectedClassId(newState.classes[0].id);
     if (newState.teachers[0]) setSelectedTeacherId(newState.teachers[0].id);
+  };
+
+  const handleRestoreSnapshot = (snapshot: RoutineSnapshot) => {
+    if (!canEdit || !snapshot?.state) return;
+    saveRoutineSnapshot(`রিস্টোরের পূর্বে (${snapshot.label})`, latestDataRef.current);
+    const restored: AppState = {
+      classes: snapshot.state.classes,
+      teachers: snapshot.state.teachers,
+      subjects: snapshot.state.subjects,
+      settings: snapshot.state.settings,
+      entries: snapshot.state.entries,
+    };
+    commitData(
+      () => restored,
+      `স্ন্যাপশট "${snapshot.label}" সফলভাবে রিস্টোর হয়েছে।`,
+      'routine_import',
+      `স্ন্যাপশট রিস্টোর: ${snapshot.label}`
+    );
+    if (restored.classes[0]) {
+      setSelectedClassId(restored.classes[0].id);
+      if (restored.classes[0].sections[0]) {
+        setSelectedSectionId(restored.classes[0].sections[0].id);
+      }
+    }
+    if (restored.teachers[0]) {
+      setSelectedTeacherId(restored.teachers[0].id);
+    }
+  };
+
+  const handleApplyGlobalWorkloadLimits = (dailyMax: number, workingDaysCount: number) => {
+    if (!canEdit) return;
+    const clampedDaily = Math.max(1, Math.min(8, Math.round(dailyMax)));
+    const clampedDays = Math.max(1, Math.min(6, Math.round(workingDaysCount)));
+    saveRoutineSnapshot('গ্লোবাল ওয়ার্কলোড নীতি পরিবর্তনের পূর্বে', latestDataRef.current);
+    commitData(
+      prev => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          defaultMaxDailyPeriods: clampedDaily,
+          defaultMaxWorkingDays: clampedDays,
+        },
+        teachers: prev.teachers.map(t =>
+          t.isBlockTeacher
+            ? t
+            : {
+                ...t,
+                maxDailyPeriods: clampedDaily,
+                maxWorkingDays: clampedDays,
+              }
+        ),
+      }),
+      `সকল নিয়মিত শিক্ষকের দৈনিক সীমা (${clampedDaily}) ও কর্মদিবস সীমা (${clampedDays} দিন) প্রয়োগ হয়েছে।`,
+      'settings_update',
+      `গ্লোবাল শিক্ষক লোড সীমা আপডেট: দৈনিক ${clampedDaily}, সপ্তাহে ${clampedDays} দিন`
+    );
   };
 
   // RBAC-guarded Proxy Log & Daily Absence handlers
@@ -1258,6 +1336,21 @@ export default function App() {
     if (!canEdit || !email) {
       showNotice('অনুমতি নেই: প্রক্সি লগ সংরক্ষণ করতে Active Admin বা Super Admin হতে হবে।');
       return;
+    }
+    if (log.status !== 'cancelled') {
+      const existingSameDay = proxyLogs.find(
+        p =>
+          p.id !== log.id &&
+          p.status !== 'cancelled' &&
+          p.proxyTeacherId === log.proxyTeacherId &&
+          p.date === log.date
+      );
+      if (existingSameDay) {
+        showNotice(
+          `নিয়ম লঙ্ঘন: ${log.proxyTeacherName}-কে ${log.date} তারিখে ইতোমধ্যেই ১টি প্রক্সি ক্লাস (${existingSameDay.className}, ${existingSameDay.periodLabel}) দেওয়া আছে। দিনে ১টির বেশি প্রক্সি দেওয়া যাবে না।`
+        );
+        return;
+      }
     }
     setProxyLogs(prev => {
       const next = isNew ? [log, ...prev] : prev.map(p => (p.id === log.id ? log : p));
@@ -1285,9 +1378,43 @@ export default function App() {
       showNotice('অনুমতি নেই: প্রক্সি লগ সংরক্ষণ করতে Active Admin বা Super Admin হতে হবে।');
       return;
     }
+    const activeKeySet = new Set(
+      proxyLogs
+        .filter(p => p.status !== 'cancelled')
+        .map(p => `${p.proxyTeacherId}__${p.date}`)
+    );
+    const validItems: { log: ProxyLogEntry; isNew: boolean }[] = [];
+    const skippedNames: string[] = [];
+
+    for (const item of items) {
+      if (item.log.status !== 'cancelled') {
+        const key = `${item.log.proxyTeacherId}__${item.log.date}`;
+        const updatingSameTeacher = proxyLogs.some(
+          p =>
+            p.id === item.log.id &&
+            p.status !== 'cancelled' &&
+            p.proxyTeacherId === item.log.proxyTeacherId &&
+            p.date === item.log.date
+        );
+        if (!updatingSameTeacher && activeKeySet.has(key)) {
+          skippedNames.push(item.log.proxyTeacherName);
+          continue;
+        }
+        activeKeySet.add(key);
+      }
+      validItems.push(item);
+    }
+
+    if (validItems.length === 0) {
+      showNotice(
+        `নিয়ম লঙ্ঘন: ${skippedNames[0] || 'নির্বাচিত শিক্ষক'} আজ ইতোমধ্যেই ১টি প্রক্সি ক্লাস পেয়েছেন। দিনে ১টির বেশি প্রক্সি দেওয়া যাবে না।`
+      );
+      return;
+    }
+
     setProxyLogs(prev => {
       const byId = new Map(prev.map(p => [p.id, p]));
-      for (const item of items) {
+      for (const item of validItems) {
         byId.set(item.log.id, item.log);
       }
       const next = Array.from(byId.values());
@@ -1296,7 +1423,7 @@ export default function App() {
     });
     const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
     try {
-      for (const item of items) {
+      for (const item of validItems) {
         await saveProxyLogToCloud({
           log: item.log,
           isNew: item.isNew,
@@ -1305,7 +1432,11 @@ export default function App() {
           actorRole,
         });
       }
-      showNotice(`${items.length}টি প্রক্সি ক্লাস সফলভাবে লগে সংরক্ষিত হয়েছে।`);
+      showNotice(
+        skippedNames.length > 0
+          ? `${validItems.length}টি প্রক্সি সংরক্ষিত হয়েছে (দিনে ১টির বেশি সীমায় ${skippedNames.length}টি বাদ)।`
+          : `${validItems.length}টি প্রক্সি ক্লাস সফলভাবে লগে সংরক্ষিত হয়েছে।`
+      );
     } catch (err) {
       console.error('Batch proxy save error:', err);
       showNotice('প্রক্সি ব্যাচ সংরক্ষণে আংশিক সমস্যা হয়েছে।');
@@ -1320,6 +1451,24 @@ export default function App() {
     if (!canEdit || !email) {
       showNotice('অনুমতি নেই: প্রক্সি স্ট্যাটাস পরিবর্তন করতে পারবেন না।');
       return;
+    }
+    if (status !== 'cancelled') {
+      const targetLog = proxyLogs.find(p => p.id === logId);
+      if (targetLog) {
+        const conflictSameDay = proxyLogs.find(
+          p =>
+            p.id !== logId &&
+            p.status !== 'cancelled' &&
+            p.proxyTeacherId === targetLog.proxyTeacherId &&
+            p.date === targetLog.date
+        );
+        if (conflictSameDay) {
+          showNotice(
+            `নিয়ম লঙ্ঘন: ${targetLog.proxyTeacherName}-এর ${targetLog.date} তারিখে ইতোমধ্যেই আরেকটি সক্রিয় প্রক্সি (${conflictSameDay.className}, ${conflictSameDay.periodLabel}) রয়েছে। দিনে ১টির বেশি প্রক্সি সক্রিয় রাখা যাবে না।`
+          );
+          return;
+        }
+      }
     }
     setProxyLogs(prev => {
       const next = prev.map(p =>
@@ -1934,6 +2083,7 @@ export default function App() {
             proxyLogs={proxyLogs}
             workingDays={data.settings.workingDays}
             periodTimings={data.settings.periodTimings}
+            settings={data.settings}
             onUpdateTeachers={handleUpdateTeachers}
             onUpdateClasses={handleUpdateClasses}
             onDeleteTeacher={handleDeleteTeacher}
@@ -1956,6 +2106,8 @@ export default function App() {
             onResetToDefaults={handleResetToDefaults}
             fullAppState={data}
             onImportBackup={handleImportBackup}
+            onRestoreSnapshot={handleRestoreSnapshot}
+            onApplyGlobalWorkloadLimits={handleApplyGlobalWorkloadLimits}
           />
 
           <SmartImportModal

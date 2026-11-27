@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { addWorksheetFromRecords } from '../services/exportExcel';
 import {
   DayOfWeek,
   SchoolClass,
@@ -74,91 +76,160 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [sourceFileName, setSourceFileName] = useState<string>('');
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(false);
   const [isAutoSaved, setIsAutoSaved] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
-  // Helper to map and apply extracted data into system storage
+  const inferNumericGrade = (className: string): number => {
+    const clean = className.trim().toLowerCase();
+    if (clean.includes('play')) return -2;
+    if (clean.includes('nursery')) return -1;
+    if (clean === 'kg' || clean.includes('k.g') || clean.includes('kindergarten')) return 0;
+    const digits = clean.match(/\d+/);
+    if (digits) {
+      const parsed = parseInt(digits[0], 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 1;
+  };
+
+  // Helper to map and apply extracted data into system storage without silent index-0 fallbacks
   const executeApply = (data: ExtractedData, mode: 'merge' | 'replace') => {
-    const subjectMap = new Map(subjects.map(s => [s.name.toLowerCase(), s]));
-    const teacherMap = new Map(teachers.map(t => [t.name.toLowerCase(), t]));
-    const classMap = new Map(classes.map(c => [c.name.toLowerCase(), c]));
+    const subjectMap = new Map(subjects.map(s => [s.name.trim().toLowerCase(), s]));
+    const teacherMap = new Map(teachers.map(t => [t.name.trim().toLowerCase(), t]));
+    const classMap = new Map(
+      classes.map(c => [
+        c.name.trim().toLowerCase(),
+        { ...c, sections: [...c.sections] },
+      ])
+    );
 
     const newSubjects: Subject[] = [...subjects];
     const newTeachers: Teacher[] = [...teachers];
-    const newClasses: SchoolClass[] = [...classes];
+    const newClasses: SchoolClass[] = Array.from(classMap.values());
 
-    // Ensure extracted subjects exist
-    data.subjects?.forEach(s => {
-      if (!subjectMap.has(s.name.toLowerCase())) {
-        const newSub: Subject = {
-          id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: s.name,
-          code: s.code || s.name.substring(0, 3).toUpperCase(),
-          color: '#3B82F6',
-        };
-        newSubjects.push(newSub);
-        subjectMap.set(s.name.toLowerCase(), newSub);
-      }
-    });
+    const ensureSubject = (rawName: string, code?: string): Subject => {
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      const existing = subjectMap.get(key);
+      if (existing) return existing;
+      const newSub: Subject = {
+        id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        code: code || name.substring(0, 3).toUpperCase(),
+        color: '#145343',
+      };
+      newSubjects.push(newSub);
+      subjectMap.set(key, newSub);
+      return newSub;
+    };
 
-    // Ensure extracted teachers exist
-    data.teachers?.forEach(t => {
-      if (!teacherMap.has(t.name.toLowerCase())) {
-        const initials = t.initials || t.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
-        const newTch: Teacher = {
-          id: `tch-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: t.name,
-          initials,
-          designation: t.designation || 'Teacher',
-          subjectIds: [],
-          maxConsecutivePeriods: 2,
-          maxDailyPeriods: 5,
-        };
-        newTeachers.push(newTch);
-        teacherMap.set(t.name.toLowerCase(), newTch);
-      }
-    });
+    const ensureTeacher = (rawName: string, initialsHint?: string, designationHint?: string): Teacher => {
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      const existing = teacherMap.get(key);
+      if (existing) return existing;
+      const initials =
+        initialsHint ||
+        name
+          .split(/\s+/)
+          .filter(Boolean)
+          .map(w => w[0])
+          .join('')
+          .slice(0, 3)
+          .toUpperCase() ||
+        'TCH';
+      const newTch: Teacher = {
+        id: `tch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        initials,
+        designation: designationHint || 'Teacher',
+        subjectIds: [],
+        maxConsecutivePeriods: 2,
+        maxDailyPeriods: settings.defaultMaxDailyPeriods ?? 5,
+        maxWorkingDays: settings.defaultMaxWorkingDays ?? 4,
+      };
+      newTeachers.push(newTch);
+      teacherMap.set(key, newTch);
+      return newTch;
+    };
 
-    // Ensure extracted classes exist
-    data.classes?.forEach(c => {
-      if (!classMap.has(c.name.toLowerCase())) {
-        const newCls: SchoolClass = {
-          id: `cls-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
-          name: c.name,
-          numericGrade: 1,
-          sections: (c.sections || ['Section A']).map((secName, idx) => ({
-            id: `sec-${idx}-${Date.now().toString(36)}`,
+    const ensureClassAndSection = (
+      rawClassName: string,
+      rawSectionName?: string
+    ): { cls: SchoolClass; secId: string } => {
+      const name = rawClassName.trim();
+      const key = name.toLowerCase();
+      let cls = classMap.get(key);
+      if (!cls) {
+        const secNames = [rawSectionName?.trim() || 'Section A'];
+        cls = {
+          id: `cls-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          name,
+          numericGrade: inferNumericGrade(name),
+          sections: secNames.map((secName, idx) => ({
+            id: `sec-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
             name: secName,
           })),
           subjectRequirements: [],
         };
-        newClasses.push(newCls);
-        classMap.set(c.name.toLowerCase(), newCls);
+        newClasses.push(cls);
+        classMap.set(key, cls);
       }
+
+      const desiredSecName = (rawSectionName || '').trim();
+      let sec = desiredSecName
+        ? cls.sections.find(s => s.name.trim().toLowerCase() === desiredSecName.toLowerCase())
+        : cls.sections[0];
+
+      if (!sec) {
+        sec = {
+          id: `sec-${cls.sections.length}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+          name: desiredSecName || 'Section A',
+        };
+        cls.sections.push(sec);
+      }
+
+      return { cls, secId: sec.id };
+    };
+
+    // Ensure extracted subjects, teachers, and classes exist cleanly
+    data.subjects?.forEach(s => {
+      if (s.name?.trim()) ensureSubject(s.name, s.code);
     });
 
-    // Map extracted entries to timetable entries
+    data.teachers?.forEach(t => {
+      if (t.name?.trim()) ensureTeacher(t.name, t.initials, t.designation);
+    });
+
+    data.classes?.forEach(c => {
+      if (!c.name?.trim()) return;
+      const secList = c.sections && c.sections.length > 0 ? c.sections : ['Section A'];
+      secList.forEach(secName => ensureClassAndSection(c.name, secName));
+    });
+
+    // Map extracted entries to valid class/section/subject/teacher IDs
     const mappedEntries: TimetableEntry[] = [];
     data.entries?.forEach((e, idx) => {
-      const cls = classMap.get(e.className.toLowerCase()) || newClasses[0];
-      const sec = cls.sections.find(s => s.name.toLowerCase() === (e.sectionName || '').toLowerCase()) || cls.sections[0];
-      const sub = subjectMap.get(e.subjectName.toLowerCase()) || newSubjects[0];
-      const tch = teacherMap.get(e.teacherName.toLowerCase()) || newTeachers[0];
-
-      if (cls && sec && sub && tch) {
-        mappedEntries.push({
-          id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
-          classId: cls.id,
-          sectionId: sec.id,
-          day: e.day || 'Sunday',
-          periodIndex: e.periodIndex || 1,
-          subjectId: sub.id,
-          teacherId: tch.id,
-          room: e.room,
-        });
+      if (!e.className?.trim() || !e.subjectName?.trim()) return;
+      const { cls, secId } = ensureClassAndSection(e.className, e.sectionName);
+      const sub = ensureSubject(e.subjectName);
+      const tch = e.teacherName?.trim() ? ensureTeacher(e.teacherName) : undefined;
+      if (tch && !tch.subjectIds.includes(sub.id)) {
+        tch.subjectIds.push(sub.id);
       }
+
+      mappedEntries.push({
+        id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        classId: cls.id,
+        sectionId: secId,
+        day: e.day || settings.workingDays[0] || 'Sunday',
+        periodIndex: Number.isFinite(Number(e.periodIndex)) ? Number(e.periodIndex) : 1,
+        subjectId: sub.id,
+        teacherId: tch?.id || '',
+        room: e.room?.trim() || undefined,
+      });
     });
 
     onApplyImport(
@@ -171,151 +242,241 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
     );
   };
 
-  // 1. Download Sample Excel Template
-  const handleDownloadSampleExcel = () => {
-    const sampleData = [
-      {
-        Class: 'Play',
-        Section: 'Section A',
-        Day: 'Sunday',
-        Period: 1,
-        Subject: 'Rhymes & Storytelling',
-        Teacher: 'Ms. Zinat Ara',
-        Room: 'Room P-1',
-      },
-      {
-        Class: 'Nursery',
-        Section: 'Section A',
-        Day: 'Sunday',
-        Period: 1,
-        Subject: 'Bengali',
-        Teacher: 'Mrs. Nasrin Sultana',
-        Room: 'Room N-1',
-      },
-      {
-        Class: 'KG',
-        Section: 'Section A',
-        Day: 'Sunday',
-        Period: 2,
-        Subject: 'Mathematics',
-        Teacher: 'Mr. Moniruzzaman',
-        Room: 'Room K-1',
-      },
-      {
-        Class: 'Class 8',
-        Section: 'Section A',
-        Day: 'Sunday',
-        Period: 1,
-        Subject: 'Mathematics',
-        Teacher: 'Mr. A. Rahman',
-        Room: 'Room 404',
-      },
-      {
-        Class: 'Class 9',
-        Section: 'Section B',
-        Day: 'Sunday',
-        Period: 3,
-        Subject: 'Higher Mathematics',
-        Teacher: 'Mr. A. Rahman',
-        Room: 'Room 502',
-      },
-      {
-        Class: 'Class 10',
-        Section: 'Section A',
-        Day: 'Monday',
-        Period: 2,
-        Subject: 'Mathematics',
-        Teacher: 'Mr. A. Rahman',
-        Room: 'Room 505',
-      },
-    ];
+  // 1. Download Sample Excel Template (ExcelJS)
+  const handleDownloadSampleExcel = async () => {
+    try {
+      const sampleData: Record<string, string | number>[] = [
+        {
+          Class: 'Play',
+          Section: 'Section A',
+          Day: 'Sunday',
+          Period: 1,
+          Subject: 'Rhymes & Storytelling',
+          Teacher: 'Ms. Zinat Ara',
+          Room: 'Room P-1',
+        },
+        {
+          Class: 'Nursery',
+          Section: 'Section A',
+          Day: 'Sunday',
+          Period: 1,
+          Subject: 'Bengali',
+          Teacher: 'Mrs. Nasrin Sultana',
+          Room: 'Room N-1',
+        },
+        {
+          Class: 'KG',
+          Section: 'Section A',
+          Day: 'Sunday',
+          Period: 2,
+          Subject: 'Mathematics',
+          Teacher: 'Mr. Moniruzzaman',
+          Room: 'Room K-1',
+        },
+        {
+          Class: 'Class 8',
+          Section: 'Section A',
+          Day: 'Sunday',
+          Period: 1,
+          Subject: 'Mathematics',
+          Teacher: 'Mr. A. Rahman',
+          Room: 'Room 404',
+        },
+        {
+          Class: 'Class 9',
+          Section: 'Section B',
+          Day: 'Sunday',
+          Period: 3,
+          Subject: 'Higher Mathematics',
+          Teacher: 'Mr. A. Rahman',
+          Room: 'Room 502',
+        },
+        {
+          Class: 'Class 10',
+          Section: 'Section A',
+          Day: 'Monday',
+          Period: 2,
+          Subject: 'Mathematics',
+          Teacher: 'Mr. A. Rahman',
+          Room: 'Room 505',
+        },
+      ];
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    XLSX.utils.book_append_sheet(wb, ws, 'Routines');
-    XLSX.writeFile(wb, 'Icon_Dreams_Routine_Import_Template.xlsx');
+      const wb = new ExcelJS.Workbook();
+      addWorksheetFromRecords(wb, 'Routines', sampleData);
+      const buffer = await wb.xlsx.writeBuffer();
+      saveAs(
+        new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'Icon_Dreams_Routine_Import_Template.xlsx'
+      );
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Failed to generate sample Excel template.');
+    }
   };
 
-  // 2. Parse Excel/CSV Client-Side directly with xlsx
-  const parseExcelFile = (file: File) => {
+  // Minimal RFC-4180 CSV parser for .csv imports
+  const parseCsvToRecords = (text: string): Record<string, string>[] => {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentField += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') i++;
+        currentRow.push(currentField.trim());
+        if (currentRow.some(cell => cell.length > 0)) rows.push(currentRow);
+        currentRow = [];
+        currentField = '';
+      } else {
+        currentField += char;
+      }
+    }
+    if (currentField.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentField.trim());
+      if (currentRow.some(cell => cell.length > 0)) rows.push(currentRow);
+    }
+
+    if (rows.length < 2) return [];
+    const headers = rows[0].map(h => h.replace(/^\uFEFF/, '').trim());
+    return rows.slice(1).map(row => {
+      const obj: Record<string, string> = {};
+      headers.forEach((header, idx) => {
+        if (header) obj[header] = row[idx] ?? '';
+      });
+      return obj;
+    });
+  };
+
+  // 2. Parse Excel (.xlsx) / CSV Client-Side with ExcelJS
+  const parseExcelFile = async (file: File) => {
     setIsProcessing(true);
     setErrorMessage(null);
     setSourceFileName(file.name);
 
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonRows: any[] = XLSX.utils.sheet_to_json(worksheet);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (ext === 'xls') {
+        throw new Error(
+          'Legacy binary .xls files are not supported directly. Please save the workbook as .xlsx or .csv (or upload a PDF/photo).'
+        );
+      }
 
-        if (!jsonRows || jsonRows.length === 0) {
-          throw new Error('No data rows found in spreadsheet.');
+      let jsonRows: Record<string, unknown>[] = [];
+      if (ext === 'csv') {
+        const csvText = await file.text();
+        jsonRows = parseCsvToRecords(csvText);
+      } else {
+        const buffer = await file.arrayBuffer();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) {
+          throw new Error('No worksheets found inside the Excel file.');
         }
 
-        // Map spreadsheet columns to our schema
-        const entries: ExtractedData['entries'] = [];
-        const detectedClasses = new Set<string>();
-        const detectedTeachers = new Set<string>();
-        const detectedSubjects = new Set<string>();
-
-        jsonRows.forEach(row => {
-          const className = String(row.Class || row.class || row['Class Name'] || '').trim();
-          const sectionName = String(row.Section || row.section || row['Section Name'] || 'Section A').trim();
-          const day = String(row.Day || row.day || row['Day of Week'] || 'Sunday').trim() as DayOfWeek;
-          const periodIndex = Number(row.Period || row.period || row['Period Number'] || 1);
-          const subjectName = String(row.Subject || row.subject || row['Subject Name'] || '').trim();
-          const teacherName = String(row.Teacher || row.teacher || row['Teacher Name'] || '').trim();
-          const room = String(row.Room || row.room || row['Room Number'] || '').trim();
-
-          if (className && subjectName) {
-            detectedClasses.add(className);
-            detectedSubjects.add(subjectName);
-            if (teacherName) detectedTeachers.add(teacherName);
-
-            entries.push({
-              className,
-              sectionName,
-              day,
-              periodIndex,
-              subjectName,
-              teacherName: teacherName || 'Assigned Teacher',
-              room: room || undefined,
-            });
-          }
+        const headerRow = worksheet.getRow(1);
+        const headers: string[] = [];
+        headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          headers[colNumber] = String(cell.text ?? cell.value ?? '').trim();
         });
 
-        const extracted: ExtractedData = {
-          schoolName: 'Icon Dreams School and College',
-          classes: Array.from(detectedClasses).map(c => ({
-            name: c,
-            sections: ['Section A', 'Section B'],
-          })),
-          teachers: Array.from(detectedTeachers).map(t => ({
-            name: t,
-            designation: 'Teacher',
-          })),
-          subjects: Array.from(detectedSubjects).map(s => ({
-            name: s,
-          })),
-          entries,
-        };
-
-        setExtractedData(extracted);
-        if (autoSaveEnabled) {
-          executeApply(extracted, importMode);
-          setIsAutoSaved(true);
-        }
-        setActiveTab('preview');
-      } catch (err: any) {
-        setErrorMessage(err?.message || 'Failed to parse Excel file.');
-      } finally {
-        setIsProcessing(false);
+        worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const record: Record<string, unknown> = {};
+          let hasData = false;
+          headers.forEach((header, colNumber) => {
+            if (!header) return;
+            const rawCell = row.getCell(colNumber);
+            const val = rawCell.text?.trim() || (rawCell.value !== null && rawCell.value !== undefined ? String(rawCell.value).trim() : '');
+            if (val) hasData = true;
+            record[header] = val;
+          });
+          if (hasData) jsonRows.push(record);
+        });
       }
-    };
-    reader.readAsArrayBuffer(file);
+
+      if (jsonRows.length === 0) {
+        throw new Error('No data rows found in spreadsheet.');
+      }
+
+      const entries: ExtractedData['entries'] = [];
+      const detectedClassSections = new Map<string, Set<string>>();
+      const detectedTeachers = new Set<string>();
+      const detectedSubjects = new Set<string>();
+
+      jsonRows.forEach(row => {
+        const className = String(row.Class || row.class || row['Class Name'] || '').trim();
+        const sectionName = String(row.Section || row.section || row['Section Name'] || 'Section A').trim() || 'Section A';
+        const day = String(row.Day || row.day || row['Day of Week'] || 'Sunday').trim() as DayOfWeek;
+        const parsedPeriod = Number(row.Period || row.period || row['Period Number'] || 1);
+        const periodIndex = Number.isFinite(parsedPeriod) && parsedPeriod > 0 ? parsedPeriod : 1;
+        const subjectName = String(row.Subject || row.subject || row['Subject Name'] || '').trim();
+        const teacherName = String(row.Teacher || row.teacher || row['Teacher Name'] || '').trim();
+        const room = String(row.Room || row.room || row['Room Number'] || '').trim();
+
+        if (className && subjectName) {
+          if (!detectedClassSections.has(className)) {
+            detectedClassSections.set(className, new Set());
+          }
+          detectedClassSections.get(className)!.add(sectionName);
+          detectedSubjects.add(subjectName);
+          if (teacherName) detectedTeachers.add(teacherName);
+
+          entries.push({
+            className,
+            sectionName,
+            day,
+            periodIndex,
+            subjectName,
+            teacherName: teacherName || 'Assigned Teacher',
+            room: room || undefined,
+          });
+        }
+      });
+
+      const extracted: ExtractedData = {
+        schoolName: settings.schoolName || 'Icon Dreams School and College',
+        classes: Array.from(detectedClassSections.entries()).map(([className, secSet]) => ({
+          name: className,
+          sections: Array.from(secSet),
+        })),
+        teachers: Array.from(detectedTeachers).map(t => ({
+          name: t,
+          designation: 'Teacher',
+        })),
+        subjects: Array.from(detectedSubjects).map(s => ({
+          name: s,
+        })),
+        entries,
+      };
+
+      setExtractedData(extracted);
+      if (autoSaveEnabled) {
+        executeApply(extracted, importMode);
+        setIsAutoSaved(true);
+      }
+      setActiveTab('preview');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to parse spreadsheet file.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 3. Parse Image / PDF / Word via server Gemini API
@@ -662,7 +823,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
             <button
               type="button"
               onClick={handleConfirmImport}
-              className="px-5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg flex items-center gap-1.5 shadow-xs"
+              className="px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] rounded-lg flex items-center gap-1.5 shadow-xs"
             >
               <Check className="w-4 h-4" />
               <span>Apply to Schedule</span>
