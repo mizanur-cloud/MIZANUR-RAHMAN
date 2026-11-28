@@ -1,18 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Lock,
   Mail,
   Eye,
   EyeOff,
-  ShieldCheck,
   UserPlus,
   KeyRound,
   AlertCircle,
   CheckCircle2,
   LogIn,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { FIREBASE_PROJECT_ID } from '../services/firebase';
 import { SchoolCrestLogo } from './SchoolCrestLogo';
 
 interface LoginModalProps {
@@ -30,17 +33,57 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [unauthorizedHost, setUnauthorizedHost] = useState<string | null>(null);
+  const [providerDisabled, setProviderDisabled] = useState(false);
+  const [copiedHost, setCopiedHost] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setSuccess(null);
+      setUnauthorizedHost(null);
+      setProviderDisabled(false);
+      setCopiedHost(false);
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const mapAuthError = (err: any): string => {
-    const code = err?.code || '';
-    if (code === 'auth/popup-closed-by-user') return 'লগইন পপ-আপ বন্ধ করা হয়েছে।';
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  const firebaseAuthorizedDomainsUrl = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`;
+  const firebaseProvidersUrl = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/providers`;
+
+  const mapAuthError = (err: unknown): string => {
+    const authErr = err as { code?: string; message?: string } | null;
+    const code = authErr?.code || '';
+    const msg = authErr?.message || '';
+
+    setUnauthorizedHost(null);
+    setProviderDisabled(false);
+
+    if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+      setUnauthorizedHost(currentHost || window.location.host || '');
+      return 'বর্তমান ওয়েব ঠিকানাটি (Domain) Firebase Authentication-এর অনুমোদিত তালিকায় যুক্ত নেই, তাই Google লগইন ব্লক হয়েছে।';
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      return 'লগইন পপ-আপটি সম্পূর্ণ হওয়ার আগেই বন্ধ করা হয়েছে। আবার চেষ্টা করুন।';
+    }
+    if (code === 'auth/popup-blocked') {
+      return 'ব্রাউজার লগইন পপ-আপ ব্লক করেছে। অনুগ্রহ করে ব্রাউজারের Pop-up অনুমতি চালু করে আবার চেষ্টা করুন।';
+    }
+    if (code === 'auth/cancelled-popup-request') {
+      return 'পূর্ববর্তী লগইন অনুরোধ বাতিল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+    }
     if (code === 'auth/operation-not-allowed') {
-      return 'ইমেইল ও পাসওয়ার্ড সাইন-ইন বর্তমানে Firebase Console-এ সক্রিয় নেই। এখনই প্রবেশ করতে উপরের "Google দিয়ে নিরাপদ লগইন" বাটন ব্যবহার করুন, অথবা Firebase Console → Authentication → Sign-in method থেকে Email/Password চালু করুন।';
+      setProviderDisabled(true);
+      return 'ইমেইল ও পাসওয়ার্ড সাইন-ইন বর্তমানে Firebase Console-এ সক্রিয় নেই। প্রবেশ করতে উপরের "Google দিয়ে নিরাপদ লগইন" বাটন ব্যবহার করুন, অথবা Firebase Console থেকে Email/Password চালু করুন।';
     }
     if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
       return 'ইমেইল বা পাসওয়ার্ড সঠিক নয়।';
+    }
+    if (code === 'auth/invalid-email') {
+      return 'সঠিক ইমেইল ঠিকানা লিখুন।';
     }
     if (code === 'auth/weak-password') {
       return 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।';
@@ -48,15 +91,34 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     if (code === 'auth/email-already-in-use') {
       return 'এই ইমেইল দিয়ে ইতোমধ্যেই অ্যাকাউন্ট রয়েছে।';
     }
+    if (code === 'auth/account-exists-with-different-credential') {
+      return 'এই ইমেইলটি অন্য একটি সাইন-ইন পদ্ধতির সাথে যুক্ত রয়েছে। Google দিয়ে লগইন চেষ্টা করুন।';
+    }
+    if (code === 'auth/user-disabled') {
+      return 'এই অ্যাকাউন্টটি সাময়িকভাবে নিষ্ক্রিয় করা হয়েছে।';
+    }
+    if (code === 'auth/network-request-failed') {
+      return 'ইন্টারনেট সংযোগে সমস্যা হয়েছে। নেটওয়ার্ক যাচাই করে আবার চেষ্টা করুন।';
+    }
     if (code === 'auth/too-many-requests') {
       return 'অতিরিক্ত চেষ্টার কারণে সাময়িকভাবে ব্লক করা হয়েছে। কিছুক্ষণ পর চেষ্টা করুন।';
     }
-    return err?.message || 'লগইন করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+    return msg || 'লগইন করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+  };
+
+  const handleCopyHost = () => {
+    if (!unauthorizedHost) return;
+    navigator.clipboard?.writeText(unauthorizedHost).then(() => {
+      setCopiedHost(true);
+      setTimeout(() => setCopiedHost(false), 2500);
+    }).catch(() => {});
   };
 
   const handleGoogleLogin = async () => {
     setError(null);
     setSuccess(null);
+    setUnauthorizedHost(null);
+    setProviderDisabled(false);
     setLoading(true);
     try {
       await signInWithGoogle();
@@ -72,6 +134,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setUnauthorizedHost(null);
+    setProviderDisabled(false);
     setLoading(true);
     try {
       if (mode === 'login') {
@@ -93,7 +157,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 dark:border-slate-800 flex items-center justify-between bg-[#f7f5f0] dark:bg-slate-800/50">
           <div className="flex items-center gap-3">
@@ -159,6 +223,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 setMode('login');
                 setError(null);
                 setSuccess(null);
+                setUnauthorizedHost(null);
+                setProviderDisabled(false);
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'login'
@@ -175,6 +241,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 setMode('register');
                 setError(null);
                 setSuccess(null);
+                setUnauthorizedHost(null);
+                setProviderDisabled(false);
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'register'
@@ -191,6 +259,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 setMode('reset');
                 setError(null);
                 setSuccess(null);
+                setUnauthorizedHost(null);
+                setProviderDisabled(false);
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'reset'
@@ -204,9 +274,60 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-              <span>{error}</span>
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                <span className="leading-relaxed">{error}</span>
+              </div>
+
+              {unauthorizedHost && (
+                <div className="pt-2 border-t border-rose-200/80 dark:border-rose-800/60 space-y-2 text-[11px]">
+                  <div className="font-semibold text-rose-900 dark:text-rose-100">
+                    সমাধানের ধাপ (১০ সেকেন্ড):
+                  </div>
+                  <div className="flex items-center justify-between gap-2 bg-white/90 dark:bg-slate-900/80 border border-rose-200 dark:border-rose-800 rounded-lg px-2.5 py-1.5">
+                    <code className="text-[11px] font-mono text-slate-800 dark:text-slate-200 truncate">
+                      {unauthorizedHost}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopyHost}
+                      className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-900 text-rose-800 dark:text-rose-100 font-semibold transition-colors"
+                    >
+                      {copiedHost ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedHost ? 'কপি হয়েছে' : 'কপি'}</span>
+                    </button>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-0.5 text-rose-900/90 dark:text-rose-200/90 leading-relaxed">
+                    <li>উপরের ডোমেইন নামটি কপি করুন।</li>
+                    <li>নিচের বাটনে গিয়ে Authentication → Settings → Authorized domains খুলুন।</li>
+                    <li>Add domain-এ ডোমেইনটি সেভ করে আবার Google দিয়ে লগইন করুন।</li>
+                  </ol>
+                  <a
+                    href={firebaseAuthorizedDomainsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-semibold transition-colors"
+                  >
+                    <span>Firebase Authorized Domains খুলুন</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              {providerDisabled && (
+                <div className="pt-2 border-t border-rose-200/80 dark:border-rose-800/60">
+                  <a
+                    href={firebaseProvidersUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-semibold transition-colors"
+                  >
+                    <span>Firebase Sign-in Providers খুলুন</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
           )}
 

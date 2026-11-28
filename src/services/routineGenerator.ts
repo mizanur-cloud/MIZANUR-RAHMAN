@@ -5721,7 +5721,7 @@ export function generateSmartTimetable(
     return streaks;
   };
 
-  for (let streakRound = 0; streakRound < 5; streakRound++) {
+  for (let streakRound = 0; streakRound < 8; streakRound++) {
     let fixedStreak = false;
 
     for (const teacher of teachers) {
@@ -5988,21 +5988,120 @@ export function generateSmartTimetable(
                     break;
                   }
 
-                  const crossPeer = resultEntries.find(peer => {
+                  const crossPeers = resultEntries.filter(peer => {
                     if (peer.classId !== entrySrc.classId || peer.sectionId !== entrySrc.sectionId) return false;
                     if (peer.day !== otherDay || peer.subjectId === entrySrc.subjectId) return false;
-                    if (!canSwapEntriesPreservingWorkingDaysAndLimits(entrySrc, teacher, peer, false)) return false;
+                    if (isReligionSubject(peer.subjectId, subjects) || peer.teacherId === teacher.id) return false;
+                    const skP = `${peer.classId}_${peer.sectionId}_${peer.day}_${peer.periodIndex}`;
+                    if ((sectionBookings.get(skP)?.length || 0) !== 1) return false;
+                    if (!isPeriodAllowedForSubject(entrySrc.classId, entrySrc.sectionId, entrySrc.subjectId, peer.periodIndex)) return false;
+                    if (!isPeriodAllowedForSubject(peer.classId, peer.sectionId, peer.subjectId, pSrc)) return false;
+                    if (wouldViolateSubjectDailyLimit(secCtx, entrySrc.subjectId, otherDay, day)) return false;
+                    if (wouldViolateSubjectDailyLimit(secCtx, peer.subjectId, day, otherDay)) return false;
+                    if (isSubjectDedicatedRoomConflict(entrySrc.subjectId, otherDay, peer.periodIndex, entrySrc.room, entrySrc.classId, entrySrc.sectionId)) return false;
+                    if (isSubjectDedicatedRoomConflict(peer.subjectId, day, pSrc, peer.room, peer.classId, peer.sectionId)) return false;
+                    if (isTeacherBlockedAtSlot(teacher, otherDay, peer.periodIndex)) return false;
                     if (getSimulatedDayConsecutiveRun(teacher.id, otherDay, peer.periodIndex) >= 3) return false;
-                    if (!isFourPlus && peer.teacherId && getSimulatedDayConsecutiveRun(peer.teacherId, day, pSrc) >= 3) return false;
+                    if (peer.teacherId) {
+                      const bT = teacherMap.get(peer.teacherId);
+                      if (!bT || isTeacherBlockedAtSlot(bT, day, pSrc)) return false;
+                      if (!isFourPlus && getSimulatedDayConsecutiveRun(bT.id, day, pSrc) >= 3) return false;
+                      if (isFourPlus && getSimulatedDayConsecutiveRun(bT.id, day, pSrc) >= 4) return false;
+                    }
                     return true;
                   });
 
-                  if (crossPeer) {
-                    swapTwoEntriesInSection(secCtx, entrySrc, crossPeer);
+                  for (const crossPeer of crossPeers) {
+                    const cpPer = crossPeer.periodIndex;
+                    const bT = crossPeer.teacherId ? teacherMap.get(crossPeer.teacherId) : undefined;
+                    if (teacherBookings.has(`${teacher.id}_${otherDay}_${cpPer}`)) {
+                      tryRelocateTeacherBlockerAtSlot(teacher, otherDay, cpPer, false);
+                    }
+                    if (bT && (teacherDayLoad.get(`${bT.id}_${day}`) || 0) >= getTeacherDailyMax(bT, settings)) {
+                      tryFreeOneDaySlotForTeacher(bT, day);
+                    }
+                    if (bT && teacherBookings.has(`${bT.id}_${day}_${pSrc}`)) {
+                      tryRelocateTeacherBlockerAtSlot(bT, day, pSrc, false);
+                    }
+                    if (
+                      entrySrc.day === day &&
+                      entrySrc.periodIndex === pSrc &&
+                      crossPeer.day === otherDay &&
+                      crossPeer.periodIndex === cpPer &&
+                      canSwapEntriesPreservingWorkingDaysAndLimits(entrySrc, teacher, crossPeer, false) &&
+                      getSimulatedDayConsecutiveRun(teacher.id, otherDay, cpPer) < 3 &&
+                      (!bT || getSimulatedDayConsecutiveRun(bT.id, day, pSrc) < (isFourPlus ? 4 : 3))
+                    ) {
+                      swapTwoEntriesInSection(secCtx, entrySrc, crossPeer);
+                      brokeThisStreak = true;
+                      fixedStreak = true;
+                      break;
+                    }
+                  }
+                  if (brokeThisStreak) break;
+
+                  // Cross-day swap with a Religion slot (1 or 2 entries) on otherDay when single non-rel peers are exhausted
+                  const relSlotsOtherDay = Array.from(
+                    new Set(
+                      resultEntries
+                        .filter(
+                          e =>
+                            e.classId === entrySrc.classId &&
+                            e.sectionId === entrySrc.sectionId &&
+                            e.day === otherDay &&
+                            isReligionSubject(e.subjectId, subjects)
+                        )
+                        .map(e => e.periodIndex)
+                    )
+                  );
+                  for (const rPer of relSlotsOtherDay) {
+                    const relList = sectionBookings.get(`${entrySrc.classId}_${entrySrc.sectionId}_${otherDay}_${rPer}`) || [];
+                    if (relList.length === 0 || !relList.every(re => isReligionSubject(re.subjectId, subjects))) continue;
+                    if (relList.some(re => re.teacherId === teacher.id)) continue;
+                    const srcDp = `${day}_${pSrc}`;
+                    const destSecKey = `${entrySrc.classId}_${entrySrc.sectionId}`;
+                    if ((religionSlotSections.get(srcDp)?.size || 0) >= maxRelConcurrent && !religionSlotSections.get(srcDp)?.has(destSecKey)) continue;
+                    if (!isPeriodAllowedForSubject(entrySrc.classId, entrySrc.sectionId, entrySrc.subjectId, rPer)) continue;
+                    if (wouldViolateSubjectDailyLimit(secCtx, entrySrc.subjectId, otherDay, day)) continue;
+                    if (isSubjectDedicatedRoomConflict(entrySrc.subjectId, otherDay, rPer, entrySrc.room, entrySrc.classId, entrySrc.sectionId)) continue;
+                    if (isTeacherBlockedAtSlot(teacher, otherDay, rPer)) continue;
+                    if (teacherBookings.has(`${teacher.id}_${otherDay}_${rPer}`)) continue;
+                    if (getSimulatedDayConsecutiveRun(teacher.id, otherDay, rPer) >= 3) continue;
+
+                    const relStaticOk = relList.every(re => {
+                      if (!isPeriodAllowedForSubject(re.classId, re.sectionId, re.subjectId, pSrc)) return false;
+                      if (wouldViolateSubjectDailyLimit(secCtx, re.subjectId, day, otherDay)) return false;
+                      if (isSubjectDedicatedRoomConflict(re.subjectId, day, pSrc, re.room, re.classId, re.sectionId)) return false;
+                      if (isHinduReligionSubject(re.subjectId, subjects)) {
+                        const otherHin = resultEntries.find(
+                          o => o.day === day && o.periodIndex === pSrc && isHinduReligionSubject(o.subjectId, subjects) && isHinduReligionRoom(o.room, settings) && Boolean(o.teacherId)
+                        );
+                        if (otherHin && otherHin.teacherId !== re.teacherId) return false;
+                      }
+                      if (!re.teacherId) return true;
+                      const rt = teacherMap.get(re.teacherId);
+                      if (!rt || isTeacherBlockedAtSlot(rt, day, pSrc)) return false;
+                      if (isTeacherSlotBusyFor(rt.id, re.subjectId, day, pSrc, re.room)) return false;
+                      const rtInWave = teacherSlotEntries.has(`${rt.id}_${day}_${pSrc}`);
+                      if (!rtInWave && (teacherDayLoad.get(`${rt.id}_${day}`) || 0) >= getTeacherDailyMax(rt, settings)) return false;
+                      if (getSimulatedDayConsecutiveRun(rt.id, day, pSrc) >= (isFourPlus ? 4 : 3)) return false;
+                      return true;
+                    });
+                    if (!relStaticOk) continue;
+
+                    const oldKey = `${entrySrc.classId}_${entrySrc.sectionId}_${day}_${pSrc}`;
+                    const relKey = `${entrySrc.classId}_${entrySrc.sectionId}_${otherDay}_${rPer}`;
+                    updateTeacherAndSubjectCountsOnMove(entrySrc, secCtx, day, pSrc, otherDay, rPer);
+                    for (const re of relList) {
+                      updateTeacherAndSubjectCountsOnMove(re, secCtx, otherDay, rPer, day, pSrc);
+                    }
+                    sectionBookings.set(oldKey, [...relList]);
+                    sectionBookings.set(relKey, [entrySrc]);
                     brokeThisStreak = true;
                     fixedStreak = true;
                     break;
                   }
+                  if (brokeThisStreak) break;
                 }
 
                 // Equal-day cross-swap (with optional blocker relocation so stubborn >2-day 3-consec teachers break cleanly)
@@ -6124,6 +6223,134 @@ export function generateSmartTimetable(
                   }
                 }
               }
+
+              // Method C2: Cross-day 3-cycle onto an active under-cap day when >2 days of 3-run persists
+              if (!brokeThisStreak) {
+                const threeNowC2 = workingDays.filter(d => getTeacherDayStreaks(teacher.id, d).some(s => s.length >= 3)).length;
+                if (isFourPlus || threeNowC2 > MAX_UNAVOIDABLE_THREE_CONSECUTIVE_DAYS) {
+                  const maxDailyC2 = getTeacherDailyMax(teacher, settings);
+                  const underDaysC2 = workingDays
+                    .filter(
+                      d =>
+                        d !== day &&
+                        (teacherDayLoad.get(`${teacher.id}_${d}`) || 0) > 0 &&
+                        (teacherDayLoad.get(`${teacher.id}_${d}`) || 0) < maxDailyC2
+                    )
+                    .sort((a, b) => (teacherDayLoad.get(`${teacher.id}_${a}`) || 0) - (teacherDayLoad.get(`${teacher.id}_${b}`) || 0));
+
+                  for (const otherDay of underDaysC2) {
+                    if (brokeThisStreak) break;
+                    const singleEntriesOnOther = resultEntries.filter(e => {
+                      if (e.classId !== entrySrc.classId || e.sectionId !== entrySrc.sectionId) return false;
+                      if (e.day !== otherDay || isReligionSubject(e.subjectId, subjects)) return false;
+                      if (e.teacherId === teacher.id) return false;
+                      const sk = `${e.classId}_${e.sectionId}_${e.day}_${e.periodIndex}`;
+                      return (sectionBookings.get(sk)?.length || 0) === 1;
+                    });
+
+                    for (const pEntry of singleEntriesOnOther) {
+                      if (brokeThisStreak) break;
+                      if (pEntry.subjectId === entrySrc.subjectId) continue;
+                      const pP = pEntry.periodIndex;
+                      if (!isPeriodAllowedForSubject(pEntry.classId, pEntry.sectionId, pEntry.subjectId, pSrc)) continue;
+                      if (wouldViolateSubjectDailyLimit(secCtx, pEntry.subjectId, day, otherDay)) continue;
+                      if (isSubjectDedicatedRoomConflict(pEntry.subjectId, day, pSrc, pEntry.room, pEntry.classId, pEntry.sectionId)) continue;
+                      const pT = pEntry.teacherId ? teacherMap.get(pEntry.teacherId) : undefined;
+                      if (pT) {
+                        if (isTeacherBlockedAtSlot(pT, day, pSrc)) continue;
+                        if (getSimulatedDayConsecutiveRun(pT.id, day, pSrc) >= (isFourPlus ? 4 : 3)) continue;
+                      }
+
+                      for (const qEntry of singleEntriesOnOther) {
+                        if (qEntry.id === pEntry.id) continue;
+                        if (qEntry.subjectId === entrySrc.subjectId || qEntry.subjectId === pEntry.subjectId) continue;
+                        const qP = qEntry.periodIndex;
+                        if (
+                          entrySrc.day !== day ||
+                          entrySrc.periodIndex !== pSrc ||
+                          pEntry.day !== otherDay ||
+                          pEntry.periodIndex !== pP ||
+                          qEntry.day !== otherDay ||
+                          qEntry.periodIndex !== qP
+                        ) {
+                          continue;
+                        }
+
+                        // entrySrc: (day, pSrc) -> (otherDay, qP)
+                        if (!isPeriodAllowedForSubject(entrySrc.classId, entrySrc.sectionId, entrySrc.subjectId, qP)) continue;
+                        if (wouldViolateSubjectDailyLimit(secCtx, entrySrc.subjectId, otherDay, day)) continue;
+                        if (isSubjectDedicatedRoomConflict(entrySrc.subjectId, otherDay, qP, entrySrc.room, entrySrc.classId, entrySrc.sectionId)) continue;
+                        if (isTeacherBlockedAtSlot(teacher, otherDay, qP)) continue;
+                        if (getSimulatedDayConsecutiveRun(teacher.id, otherDay, qP) >= 3) continue;
+
+                        // qEntry: (otherDay, qP) -> (otherDay, pP)
+                        if (!isPeriodAllowedForSubject(qEntry.classId, qEntry.sectionId, qEntry.subjectId, pP)) continue;
+                        if (isSubjectDedicatedRoomConflict(qEntry.subjectId, otherDay, pP, qEntry.room, qEntry.classId, qEntry.sectionId)) continue;
+                        const qT = qEntry.teacherId ? teacherMap.get(qEntry.teacherId) : undefined;
+                        if (qT) {
+                          if (isTeacherBlockedAtSlot(qT, otherDay, pP)) continue;
+                          if (getSimulatedDayConsecutiveRun(qT.id, otherDay, pP, qP) >= 3) continue;
+                        }
+
+                        // Attempt blocker relocations if needed
+                        if (teacherBookings.has(`${teacher.id}_${otherDay}_${qP}`)) {
+                          tryRelocateTeacherBlockerAtSlot(teacher, otherDay, qP, false);
+                        }
+                        if (qT && pT?.id !== qT.id && teacherBookings.has(`${qT.id}_${otherDay}_${pP}`)) {
+                          tryRelocateTeacherBlockerAtSlot(qT, otherDay, pP, false);
+                        }
+                        if (pT && (teacherDayLoad.get(`${pT.id}_${day}`) || 0) >= getTeacherDailyMax(pT, settings)) {
+                          tryFreeOneDaySlotForTeacher(pT, day);
+                        }
+                        if (pT && teacherBookings.has(`${pT.id}_${day}_${pSrc}`)) {
+                          tryRelocateTeacherBlockerAtSlot(pT, day, pSrc, false);
+                        }
+
+                        // Re-verify exact positions & post-relocation safety
+                        if (
+                          entrySrc.day !== day ||
+                          entrySrc.periodIndex !== pSrc ||
+                          pEntry.day !== otherDay ||
+                          pEntry.periodIndex !== pP ||
+                          qEntry.day !== otherDay ||
+                          qEntry.periodIndex !== qP
+                        ) {
+                          continue;
+                        }
+                        if ((teacherDayLoad.get(`${teacher.id}_${otherDay}`) || 0) >= maxDailyC2) continue;
+                        if (isTeacherSlotBusyFor(teacher.id, entrySrc.subjectId, otherDay, qP, entrySrc.room)) continue;
+                        if (getSimulatedDayConsecutiveRun(teacher.id, otherDay, qP) >= 3) continue;
+
+                        const qTargetConflict =
+                          qT &&
+                          (pT?.id !== qT.id
+                            ? isTeacherSlotBusyFor(qT.id, qEntry.subjectId, otherDay, pP, qEntry.room)
+                            : false);
+                        if (qTargetConflict) continue;
+                        if (qT && getSimulatedDayConsecutiveRun(qT.id, otherDay, pP, qP) >= 3) continue;
+
+                        if (pT) {
+                          if ((teacherDayLoad.get(`${pT.id}_${day}`) || 0) >= getTeacherDailyMax(pT, settings)) continue;
+                          if (isTeacherSlotBusyFor(pT.id, pEntry.subjectId, day, pSrc, pEntry.room)) continue;
+                          if (getSimulatedDayConsecutiveRun(pT.id, day, pSrc) >= (isFourPlus ? 4 : 3)) continue;
+                        }
+
+                        // Commit 3-cycle: entrySrc -> (otherDay, qP), qEntry -> (otherDay, pP), pEntry -> (day, pSrc)
+                        updateTeacherAndSubjectCountsOnMove(entrySrc, secCtx, day, pSrc, otherDay, qP);
+                        updateTeacherAndSubjectCountsOnMove(qEntry, secCtx, otherDay, qP, otherDay, pP);
+                        updateTeacherAndSubjectCountsOnMove(pEntry, secCtx, otherDay, pP, day, pSrc);
+                        sectionBookings.set(`${entrySrc.classId}_${entrySrc.sectionId}_${day}_${pSrc}`, [pEntry]);
+                        sectionBookings.set(`${entrySrc.classId}_${entrySrc.sectionId}_${otherDay}_${pP}`, [qEntry]);
+                        sectionBookings.set(`${entrySrc.classId}_${entrySrc.sectionId}_${otherDay}_${qP}`, [entrySrc]);
+
+                        brokeThisStreak = true;
+                        fixedStreak = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -6166,6 +6393,374 @@ export function generateSmartTimetable(
         }
       }
     }
+  }
+
+  // Pass 7B: Post-Pass-7 Safeguard for Religion daily limits (e.g. Karim <= 4/day) & Room 307 Peak-Flattening (e.g. Tapash <= 5/day)
+  for (let round7B = 0; round7B < 4; round7B++) {
+    let fixed7B = false;
+
+    // 7B-1: Non-Hindu Religion teachers > maxDaily (e.g. Karim 5 -> 4)
+    for (const teacher of teachers) {
+      if (hinduTeacherIdSet.has(teacher.id) || blockTeacherIdSet.has(teacher.id)) continue;
+      const maxDaily = getTeacherDailyMax(teacher, settings);
+      for (let step = 0; step < 6; step++) {
+        const overDays = workingDays
+          .filter(d => (teacherDayLoad.get(`${teacher.id}_${d}`) || 0) > maxDaily)
+          .sort((a, b) => (teacherDayLoad.get(`${teacher.id}_${b}`) || 0) - (teacherDayLoad.get(`${teacher.id}_${a}`) || 0));
+        const underDays = workingDays
+          .filter(d => {
+            const c = teacherDayLoad.get(`${teacher.id}_${d}`) || 0;
+            return c > 0 && c < maxDaily;
+          })
+          .sort((a, b) => (teacherDayLoad.get(`${teacher.id}_${a}`) || 0) - (teacherDayLoad.get(`${teacher.id}_${b}`) || 0));
+        if (overDays.length === 0 || underDays.length === 0) break;
+
+        let movedOne = false;
+        for (const dayOver of overDays) {
+          if (movedOne) break;
+          const seenRel = new Set<string>();
+          const relOverSlots: TimetableEntry[][] = [];
+          resultEntries.forEach(e => {
+            if (e.teacherId !== teacher.id || e.day !== dayOver || !isReligionSubject(e.subjectId, subjects)) return;
+            if (isHinduReligionSubject(e.subjectId, subjects) && isHinduReligionRoom(e.room, settings)) return;
+            const sk = `${e.classId}_${e.sectionId}_${e.day}_${e.periodIndex}`;
+            if (seenRel.has(sk)) return;
+            seenRel.add(sk);
+            const list = sectionBookings.get(sk) || [];
+            if (list.length > 0) relOverSlots.push([...list]);
+          });
+
+          const canPartnerMove = (re: TimetableEntry, destDay: DayOfWeek, destPeriod: number, srcDay: DayOfWeek, srcPeriod: number): boolean => {
+            if (!isPeriodAllowedForSubject(re.classId, re.sectionId, re.subjectId, destPeriod)) return false;
+            const sCtx = sectionContextMap.get(`${re.classId}_${re.sectionId}`);
+            if (!sCtx || wouldViolateSubjectDailyLimit(sCtx, re.subjectId, destDay, srcDay)) return false;
+            if (isSubjectDedicatedRoomConflict(re.subjectId, destDay, destPeriod, re.room, re.classId, re.sectionId)) return false;
+            if (isHinduReligionSubject(re.subjectId, subjects)) {
+              const otherHin = resultEntries.find(
+                o => o.day === destDay && o.periodIndex === destPeriod && isHinduReligionSubject(o.subjectId, subjects) && isHinduReligionRoom(o.room, settings) && Boolean(o.teacherId)
+              );
+              if (otherHin && otherHin.teacherId !== re.teacherId) return false;
+            }
+            if (!re.teacherId) return true;
+            if (re.teacherId === teacher.id) {
+              return canTeacherMoveToSlot(re.teacherId, destDay, destPeriod, srcDay, true, re.subjectId, re.room, srcPeriod);
+            }
+            const pt = teacherMap.get(re.teacherId);
+            if (!pt) return false;
+            const destDp = `${destDay}_${destPeriod}`;
+            const alreadyInWave = teacherSlotEntries.has(`${pt.id}_${destDp}`);
+            const ptDestLoad = teacherDayLoad.get(`${pt.id}_${destDay}`) || 0;
+            const ptMaxD = getTeacherDailyMax(pt, settings);
+            const ptEstLoad = dedicatedLoadEstimate.get(pt.id) || (teacherWeekLoad.get(pt.id) || 0);
+            const ptCap = ptEstLoad > getTeacherMaxWorkingDays(pt, settings) * ptMaxD ? ptMaxD + 1 : ptMaxD;
+            if (!alreadyInWave && ptDestLoad >= ptCap) return false;
+            return canTeacherMoveToSlot(re.teacherId, destDay, destPeriod, srcDay, false, re.subjectId, re.room, srcPeriod);
+          };
+
+          for (const relList of relOverSlots) {
+            if (movedOne) break;
+            const lead = relList[0];
+            const secCtx = sectionContextMap.get(`${lead.classId}_${lead.sectionId}`);
+            if (!secCtx) continue;
+            const oldPeriod = lead.periodIndex;
+            const oldSlotKey = `${lead.classId}_${lead.sectionId}_${dayOver}_${oldPeriod}`;
+
+            const swapPeers = resultEntries
+              .filter(peer => {
+                if (peer.classId !== lead.classId || peer.sectionId !== lead.sectionId) return false;
+                if (!underDays.includes(peer.day) || isReligionSubject(peer.subjectId, subjects) || peer.teacherId === teacher.id) return false;
+                const skP = `${peer.classId}_${peer.sectionId}_${peer.day}_${peer.periodIndex}`;
+                if ((sectionBookings.get(skP)?.length || 0) !== 1) return false;
+                const destDp = `${peer.day}_${peer.periodIndex}`;
+                if ((religionSlotSections.get(destDp)?.size || 0) >= maxRelConcurrent) return false;
+                if (!relList.every(re => canPartnerMove(re, peer.day, peer.periodIndex, dayOver, oldPeriod))) return false;
+                if (!isPeriodAllowedForSubject(peer.classId, peer.sectionId, peer.subjectId, oldPeriod)) return false;
+                if (wouldViolateSubjectDailyLimit(secCtx, peer.subjectId, dayOver, peer.day)) return false;
+                if (isSubjectDedicatedRoomConflict(peer.subjectId, dayOver, oldPeriod, peer.room, peer.classId, peer.sectionId)) return false;
+                if (peer.teacherId && isTeacherBlockedAtSlot(teacherMap.get(peer.teacherId), dayOver, oldPeriod)) return false;
+                return true;
+              })
+              .sort((a, b) => {
+                const hp = relList.find(r => r.teacherId && r.teacherId !== teacher.id);
+                if (hp?.teacherId) {
+                  const inA = teacherSlotEntries.has(`${hp.teacherId}_${a.day}_${a.periodIndex}`) ? 1 : 0;
+                  const inB = teacherSlotEntries.has(`${hp.teacherId}_${b.day}_${b.periodIndex}`) ? 1 : 0;
+                  if (inA !== inB) return inB - inA;
+                }
+                const aBusy = a.teacherId && teacherBookings.has(`${a.teacherId}_${dayOver}_${oldPeriod}`) ? 1 : 0;
+                const bBusy = b.teacherId && teacherBookings.has(`${b.teacherId}_${dayOver}_${oldPeriod}`) ? 1 : 0;
+                return aBusy - bBusy;
+              });
+
+            for (const swapPeer of swapPeers) {
+              const pDay = swapPeer.day;
+              const pPer = swapPeer.periodIndex;
+              if (swapPeer.teacherId) {
+                const bt = teacherMap.get(swapPeer.teacherId);
+                if (bt && (teacherDayLoad.get(`${bt.id}_${dayOver}`) || 0) >= getTeacherDailyMax(bt, settings)) {
+                  tryFreeOneDaySlotForTeacher(bt, dayOver);
+                }
+                if (bt && teacherBookings.has(`${bt.id}_${dayOver}_${oldPeriod}`)) {
+                  tryRelocateTeacherBlockerAtSlot(bt, dayOver, oldPeriod, false);
+                }
+              }
+              if (
+                lead.day === dayOver &&
+                lead.periodIndex === oldPeriod &&
+                swapPeer.day === pDay &&
+                swapPeer.periodIndex === pPer &&
+                relList.every(re => canPartnerMove(re, pDay, pPer, dayOver, oldPeriod)) &&
+                (!swapPeer.teacherId ||
+                  canTeacherMoveToSlot(swapPeer.teacherId, dayOver, oldPeriod, pDay, true, swapPeer.subjectId, swapPeer.room, pPer))
+              ) {
+                const peerKey = `${swapPeer.classId}_${swapPeer.sectionId}_${pDay}_${pPer}`;
+                for (const re of relList) {
+                  updateTeacherAndSubjectCountsOnMove(re, secCtx, dayOver, oldPeriod, pDay, pPer);
+                }
+                updateTeacherAndSubjectCountsOnMove(swapPeer, secCtx, pDay, pPer, dayOver, oldPeriod);
+                sectionBookings.set(oldSlotKey, [swapPeer]);
+                sectionBookings.set(peerKey, relList);
+                movedOne = true;
+                fixed7B = true;
+                break;
+              }
+            }
+          }
+        }
+        if (!movedOne) break;
+      }
+    }
+
+    // 7B-2: Room 307 Peak-Flattening (e.g. Tapash 6 -> 5, including 2-section wave splits with 3-cycle destination swap!)
+    for (const teacher of teachers) {
+      if (!hinduTeacherIdSet.has(teacher.id)) continue;
+      const maxDaily = getTeacherDailyMax(teacher, settings);
+      for (let step = 0; step < 6; step++) {
+        const highDays = workingDays
+          .map(d => ({ d, c: teacherDayLoad.get(`${teacher.id}_${d}`) || 0 }))
+          .filter(x => x.c >= maxDaily + 2)
+          .sort((a, b) => b.c - a.c);
+        if (highDays.length === 0) break;
+
+        let movedFlat = false;
+        for (const { d: dayOver, c: dayOverLoad } of highDays) {
+          if (movedFlat) break;
+          const vacateHinduSection = (relList: TimetableEntry[]): boolean => {
+            const lead = relList[0];
+            const secCtx = sectionContextMap.get(`${lead.classId}_${lead.sectionId}`);
+            if (!secCtx) return false;
+            const oldP = lead.periodIndex;
+            const oldSlotKey = `${lead.classId}_${lead.sectionId}_${dayOver}_${oldP}`;
+
+            const canMovePartnersStatic = (destDay: DayOfWeek, destPer: number): boolean => {
+              const destDp = `${destDay}_${destPer}`;
+              if ((religionSlotSections.get(destDp)?.size || 0) >= maxRelConcurrent) return false;
+              const tInWave = teacherSlotEntries.has(`${teacher.id}_${destDp}`);
+              const tLoadDest = teacherDayLoad.get(`${teacher.id}_${destDay}`) || 0;
+              if (!tInWave && tLoadDest > dayOverLoad - 2) return false;
+              return relList.every(re => {
+                if (!isPeriodAllowedForSubject(re.classId, re.sectionId, re.subjectId, destPer)) return false;
+                if (wouldViolateSubjectDailyLimit(secCtx, re.subjectId, destDay, dayOver)) return false;
+                if (isSubjectDedicatedRoomConflict(re.subjectId, destDay, destPer, re.room, re.classId, re.sectionId)) return false;
+                if (isHinduReligionSubject(re.subjectId, subjects)) {
+                  const otherHin = resultEntries.find(
+                    o => o.day === destDay && o.periodIndex === destPer && isHinduReligionSubject(o.subjectId, subjects) && isHinduReligionRoom(o.room, settings) && Boolean(o.teacherId)
+                  );
+                  if (otherHin && otherHin.teacherId !== re.teacherId) return false;
+                }
+                if (re.teacherId === teacher.id) {
+                  return canTeacherMoveToSlot(re.teacherId, destDay, destPer, dayOver, false, re.subjectId, re.room, oldP);
+                }
+                if (re.teacherId) {
+                  const pt = teacherMap.get(re.teacherId);
+                  if (!pt || isTeacherBlockedAtSlot(pt, destDay, destPer)) return false;
+                }
+                return true;
+              });
+            };
+
+            const prepPartners = (destDay: DayOfWeek, destPer: number): boolean => {
+              for (const re of relList) {
+                if (!re.teacherId || re.teacherId === teacher.id) continue;
+                const pt = teacherMap.get(re.teacherId);
+                if (!pt) return false;
+                if ((teacherDayLoad.get(`${pt.id}_${destDay}`) || 0) >= getTeacherDailyMax(pt, settings)) {
+                  tryFreeOneDaySlotForTeacher(pt, destDay);
+                }
+                if (teacherBookings.has(`${pt.id}_${destDay}_${destPer}`)) {
+                  tryRelocateTeacherBlockerAtSlot(pt, destDay, destPer, false);
+                }
+                if (!canTeacherMoveToSlot(pt.id, destDay, destPer, dayOver, true, re.subjectId, re.room, oldP)) return false;
+              }
+              return true;
+            };
+
+            // Direct 1-swap into existing wave or <=4 day
+            const directPeers = resultEntries
+              .filter(peer => {
+                if (peer.classId !== lead.classId || peer.sectionId !== lead.sectionId) return false;
+                if (peer.day === dayOver || isReligionSubject(peer.subjectId, subjects)) return false;
+                const skP = `${peer.classId}_${peer.sectionId}_${peer.day}_${peer.periodIndex}`;
+                if ((sectionBookings.get(skP)?.length || 0) !== 1) return false;
+                if (!canMovePartnersStatic(peer.day, peer.periodIndex)) return false;
+                if (!isPeriodAllowedForSubject(peer.classId, peer.sectionId, peer.subjectId, oldP)) return false;
+                if (wouldViolateSubjectDailyLimit(secCtx, peer.subjectId, dayOver, peer.day)) return false;
+                if (isSubjectDedicatedRoomConflict(peer.subjectId, dayOver, oldP, peer.room, peer.classId, peer.sectionId)) return false;
+                if (peer.teacherId && isTeacherBlockedAtSlot(teacherMap.get(peer.teacherId), dayOver, oldP)) return false;
+                return true;
+              })
+              .sort((a, b) => {
+                const wA = teacherSlotEntries.has(`${teacher.id}_${a.day}_${a.periodIndex}`) ? 1 : 0;
+                const wB = teacherSlotEntries.has(`${teacher.id}_${b.day}_${b.periodIndex}`) ? 1 : 0;
+                return wB - wA;
+              });
+
+            for (const sp of directPeers) {
+              const pDay = sp.day;
+              const pPer = sp.periodIndex;
+              if (sp.teacherId) {
+                const bt = teacherMap.get(sp.teacherId);
+                if (bt && (teacherDayLoad.get(`${bt.id}_${dayOver}`) || 0) >= getTeacherDailyMax(bt, settings)) {
+                  tryFreeOneDaySlotForTeacher(bt, dayOver);
+                }
+                if (bt && teacherBookings.has(`${bt.id}_${dayOver}_${oldP}`)) {
+                  tryRelocateTeacherBlockerAtSlot(bt, dayOver, oldP, false);
+                }
+              }
+              if (!prepPartners(pDay, pPer)) continue;
+              if (
+                lead.day === dayOver &&
+                lead.periodIndex === oldP &&
+                sp.day === pDay &&
+                sp.periodIndex === pPer &&
+                canMovePartnersStatic(pDay, pPer) &&
+                canTeacherMoveToSlot(sp.teacherId, dayOver, oldP, pDay, true, sp.subjectId, sp.room, pPer)
+              ) {
+                const peerKey = `${sp.classId}_${sp.sectionId}_${pDay}_${pPer}`;
+                for (const re of relList) {
+                  updateTeacherAndSubjectCountsOnMove(re, secCtx, dayOver, oldP, pDay, pPer);
+                }
+                updateTeacherAndSubjectCountsOnMove(sp, secCtx, pDay, pPer, dayOver, oldP);
+                sectionBookings.set(oldSlotKey, [sp]);
+                sectionBookings.set(peerKey, relList);
+                return true;
+              }
+            }
+
+            // 3-cycle destination pre-swap: relList(dayOver, oldP) -> waveSlot(pDay, pPer), wavePeer(pDay, pPer) -> qSlot(pDay, qPer), qPeer(pDay, qPer) -> (dayOver, oldP)
+            const waveCands = resultEntries.filter(wp => {
+              if (wp.classId !== lead.classId || wp.sectionId !== lead.sectionId) return false;
+              if (wp.day === dayOver || isReligionSubject(wp.subjectId, subjects)) return false;
+              const skP = `${wp.classId}_${wp.sectionId}_${wp.day}_${wp.periodIndex}`;
+              if ((sectionBookings.get(skP)?.length || 0) !== 1) return false;
+              return canMovePartnersStatic(wp.day, wp.periodIndex);
+            });
+            for (const wp of waveCands) {
+              const pDay = wp.day;
+              const pPer = wp.periodIndex;
+              const qCands = resultEntries.filter(qp => {
+                if (qp.classId !== lead.classId || qp.sectionId !== lead.sectionId) return false;
+                if (qp.day !== pDay || qp.periodIndex === pPer || isReligionSubject(qp.subjectId, subjects)) return false;
+                if (qp.subjectId === wp.subjectId || qp.teacherId === wp.teacherId) return false;
+                const skQ = `${qp.classId}_${qp.sectionId}_${qp.day}_${qp.periodIndex}`;
+                if ((sectionBookings.get(skQ)?.length || 0) !== 1) return false;
+                if (!isPeriodAllowedForSubject(wp.classId, wp.sectionId, wp.subjectId, qp.periodIndex)) return false;
+                if (isSubjectDedicatedRoomConflict(wp.subjectId, pDay, qp.periodIndex, wp.room, wp.classId, wp.sectionId)) return false;
+                if (wp.teacherId) {
+                  const wt = teacherMap.get(wp.teacherId);
+                  if (!wt || isTeacherBlockedAtSlot(wt, pDay, qp.periodIndex)) return false;
+                  if (getSimulatedDayConsecutiveRun(wt.id, pDay, qp.periodIndex, pPer) >= 4) return false;
+                }
+                if (!isPeriodAllowedForSubject(qp.classId, qp.sectionId, qp.subjectId, oldP)) return false;
+                if (wouldViolateSubjectDailyLimit(secCtx, qp.subjectId, dayOver, pDay)) return false;
+                if (isSubjectDedicatedRoomConflict(qp.subjectId, dayOver, oldP, qp.room, qp.classId, qp.sectionId)) return false;
+                if (qp.teacherId && isTeacherBlockedAtSlot(teacherMap.get(qp.teacherId), dayOver, oldP)) return false;
+                return true;
+              });
+              for (const qp of qCands) {
+                const qPer = qp.periodIndex;
+                if (wp.teacherId) {
+                  const wt = teacherMap.get(wp.teacherId);
+                  if (wt && teacherBookings.has(`${wt.id}_${pDay}_${qPer}`)) {
+                    tryRelocateTeacherBlockerAtSlot(wt, pDay, qPer, false);
+                  }
+                }
+                if (qp.teacherId) {
+                  const qt = teacherMap.get(qp.teacherId);
+                  if (qt && (teacherDayLoad.get(`${qt.id}_${dayOver}`) || 0) >= getTeacherDailyMax(qt, settings)) {
+                    tryFreeOneDaySlotForTeacher(qt, dayOver);
+                  }
+                  if (qt && teacherBookings.has(`${qt.id}_${dayOver}_${oldP}`)) {
+                    tryRelocateTeacherBlockerAtSlot(qt, dayOver, oldP, false);
+                  }
+                }
+                if (!prepPartners(pDay, pPer)) continue;
+                if (
+                  lead.day === dayOver &&
+                  lead.periodIndex === oldP &&
+                  wp.day === pDay &&
+                  wp.periodIndex === pPer &&
+                  qp.day === pDay &&
+                  qp.periodIndex === qPer &&
+                  canMovePartnersStatic(pDay, pPer) &&
+                  (!wp.teacherId || canTeacherMoveToSlot(wp.teacherId, pDay, qPer, pDay, false, wp.subjectId, wp.room, pPer)) &&
+                  canTeacherMoveToSlot(qp.teacherId, dayOver, oldP, pDay, true, qp.subjectId, qp.room, qPer)
+                ) {
+                  const wpKey = `${wp.classId}_${wp.sectionId}_${pDay}_${pPer}`;
+                  const qpKey = `${qp.classId}_${qp.sectionId}_${pDay}_${qPer}`;
+                  for (const re of relList) {
+                    updateTeacherAndSubjectCountsOnMove(re, secCtx, dayOver, oldP, pDay, pPer);
+                  }
+                  updateTeacherAndSubjectCountsOnMove(wp, secCtx, pDay, pPer, pDay, qPer);
+                  updateTeacherAndSubjectCountsOnMove(qp, secCtx, pDay, qPer, dayOver, oldP);
+                  sectionBookings.set(oldSlotKey, [qp]);
+                  sectionBookings.set(wpKey, relList);
+                  sectionBookings.set(qpKey, [wp]);
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
+          const slotsByPeriod = new Map<number, TimetableEntry[][]>();
+          const seenR = new Set<string>();
+          resultEntries.forEach(e => {
+            if (e.teacherId !== teacher.id || e.day !== dayOver) return;
+            if (!isHinduReligionSubject(e.subjectId, subjects) || !isHinduReligionRoom(e.room, settings)) return;
+            const sk = `${e.classId}_${e.sectionId}_${e.day}_${e.periodIndex}`;
+            if (seenR.has(sk)) return;
+            seenR.add(sk);
+            const list = sectionBookings.get(sk) || [];
+            if (list.length > 0) {
+              const arr = slotsByPeriod.get(e.periodIndex) || [];
+              arr.push([...list]);
+              slotsByPeriod.set(e.periodIndex, arr);
+            }
+          });
+          const sortedWaves = Array.from(slotsByPeriod.entries()).sort((a, b) => a[1].length - b[1].length);
+          for (const [, waveLists] of sortedWaves) {
+            if (movedFlat) break;
+            if (waveLists.length === 1) {
+              if (vacateHinduSection(waveLists[0])) {
+                movedFlat = true;
+                fixed7B = true;
+                break;
+              }
+            } else if (waveLists.length === 2) {
+              if (vacateHinduSection(waveLists[0]) && vacateHinduSection(waveLists[1])) {
+                movedFlat = true;
+                fixed7B = true;
+                break;
+              }
+            }
+          }
+        }
+        if (!movedFlat) break;
+      }
+    }
+
+    if (!fixed7B) break;
   }
 
   // Post-Pass-7 Working-Days Compaction Refresher (for any feasible teachers left at > maxWorkingDays after streak rearrangements)

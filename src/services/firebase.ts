@@ -4,6 +4,7 @@ import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const SUPER_ADMIN_EMAIL = 'ratan.mizan@gmail.com';
+export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
