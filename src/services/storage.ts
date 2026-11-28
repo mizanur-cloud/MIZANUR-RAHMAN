@@ -1,5 +1,5 @@
 import { INITIAL_CLASSES, INITIAL_SETTINGS, INITIAL_SUBJECTS, INITIAL_TEACHERS, INITIAL_TIMETABLE_ENTRIES } from '../data/initialData';
-import { DailyAbsenceRecord, ProxyLogEntry, RoutineSnapshot, SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
+import { AnnualSubjectPlan, DailyAbsenceRecord, ProxyLogEntry, RoutineSnapshot, SchoolClass, SchoolSettings, Subject, Teacher, TimetableEntry } from '../types';
 import { syncTeacherAssignmentsToClasses } from './teacherSubjectSync';
 import { isPlayOrNursery } from './parallelSubjects';
 
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   ENTRIES: 'school_routine_entries_v1',
   PROXY_LOGS: 'school_routine_proxy_logs_v1',
   DAILY_ABSENCES: 'school_routine_daily_absences_v1',
+  ANNUAL_PLANS: 'school_routine_annual_plans_v1',
   POLICY_V2: 'school_routine_policy_v2_migrated',
   POLICY_V3: 'school_routine_policy_v3_migrated',
   POLICY_V4: 'school_routine_policy_v4_migrated',
@@ -422,6 +423,25 @@ export function loadStoredDailyAbsences(): Record<string, DailyAbsenceRecord> {
 export function saveStoredDailyAbsences(map: Record<string, DailyAbsenceRecord>) {
   try {
     localStorage.setItem(STORAGE_KEYS.DAILY_ABSENCES, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadStoredAnnualPlans(): AnnualSubjectPlan[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ANNUAL_PLANS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as AnnualSubjectPlan[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredAnnualPlans(plans: AnnualSubjectPlan[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ANNUAL_PLANS, JSON.stringify(plans));
   } catch {
     // Ignore storage quota errors
   }

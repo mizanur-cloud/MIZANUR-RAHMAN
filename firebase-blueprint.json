@@ -160,6 +160,7 @@
             "teacher_update",
             "subject_update",
             "settings_update",
+            "annual_plan_update",
             "proxy_assigned",
             "proxy_updated",
             "proxy_deleted",
@@ -269,6 +270,77 @@
       },
       "required": ["id", "date", "day", "absentTeacherIds", "updatedAt", "updatedByEmail", "updatedByName"]
     },
+    "AnnualSubjectPlan": {
+      "title": "AnnualSubjectPlan",
+      "description": "Class-wise annual subject class count, completion tracking, daily topic schedule, and lesson plan file references (zero PII).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "academicYear": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "totalClassesPlanned": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "completedClasses": { "type": "integer", "minimum": 0, "maximum": 500 },
+        "topics": { "type": "array" },
+        "fileRefs": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUid": { "type": "string", "maxLength": 128 },
+        "updatedByName": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "required": [
+        "id",
+        "academicYear",
+        "classId",
+        "subjectId",
+        "totalClassesPlanned",
+        "completedClasses",
+        "topics",
+        "fileRefs",
+        "updatedAt",
+        "updatedByUid",
+        "updatedByName"
+      ]
+    },
+    "LessonPlanFile": {
+      "title": "LessonPlanFile",
+      "description": "Uploaded Word/PDF/Excel lesson plan file payload linked to an AnnualSubjectPlan (zero PII).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "planId": { "type": "string", "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "mimeType": {
+          "type": "string",
+          "enum": [
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ]
+        },
+        "fileSize": { "type": "integer", "minimum": 1, "maximum": 600000 },
+        "dataBase64": { "type": "string", "minLength": 1, "maxLength": 820000 },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "uploadedByUid": { "type": "string", "maxLength": 128 },
+        "uploadedByName": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "required": [
+        "id",
+        "planId",
+        "classId",
+        "subjectId",
+        "fileName",
+        "mimeType",
+        "fileSize",
+        "dataBase64",
+        "uploadedAt",
+        "uploadedByUid",
+        "uploadedByName"
+      ]
+    },
     "ConnectionCheck": {
       "title": "ConnectionCheck",
       "description": "Read-only connection health check document.",
@@ -308,6 +380,14 @@
     "/daily_absences/{dateId}": {
       "schema": { "$ref": "#/entities/DailyAbsenceRecord" },
       "description": "Protected daily absent teacher records keyed by YYYY-MM-DD accessible only to active admins and Super Admin."
+    },
+    "/annual_plans/{planId}": {
+      "schema": { "$ref": "#/entities/AnnualSubjectPlan" },
+      "description": "Class-wise annual subject progress, daily topics, and lesson plan file metadata (zero PII)."
+    },
+    "/lesson_plan_files/{fileId}": {
+      "schema": { "$ref": "#/entities/LessonPlanFile" },
+      "description": "Word/PDF/Excel lesson plan documents stored individually per file ID and linked from annual_plans."
     },
     "/test/{docId}": {
       "schema": { "$ref": "#/entities/ConnectionCheck" },

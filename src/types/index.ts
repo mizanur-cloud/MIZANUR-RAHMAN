@@ -58,6 +58,7 @@ export interface Section {
   id: string;
   name: string; // 'A', 'B', 'C', 'D' or 'মর্নিং শিফট (Morning Shift)', 'ডে শিফট (Day Shift)'
   roomNumber?: string;
+  classTeacherId?: string; // Assigned Class Teacher (শ্রেণি শিক্ষক) for this section/shift
   extendedDay?: DayOfWeek; // Optional custom extended day for this section
   disableSeventhPeriod?: boolean; // If true, Period 7 is completely OFF (dismissed) for this section
   selectedSubjectIds?: string[]; // Section-wise selected subjects (undefined = all class subjects active)
@@ -201,6 +202,53 @@ export interface DailyAbsenceRecord {
   updatedByName: string;
 }
 
+// Annual Class-wise Subject Tracker & Lesson Plan Documents
+export interface AnnualTopicItem {
+  id: string;
+  classNumber: number; // 1, 2, 3...
+  date?: string;       // Optional YYYY-MM-DD
+  topic: string;       // Topic taught / to be taught on that day
+  isCompleted: boolean;
+  notes?: string;
+}
+
+export interface LessonPlanFileMeta {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAtIso: string;
+  uploadedByName: string;
+}
+
+export interface AnnualSubjectPlan {
+  id: string; // plan_${safeYear}_${classId}_${subjectId}
+  academicYear: string;
+  classId: string;
+  subjectId: string;
+  totalClassesPlanned: number;
+  completedClasses: number;
+  topics: AnnualTopicItem[];
+  fileRefs: LessonPlanFileMeta[];
+  updatedAt: any;
+  updatedByUid: string;
+  updatedByName: string;
+}
+
+export interface LessonPlanFileDoc {
+  id: string;
+  planId: string;
+  classId: string;
+  subjectId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  dataBase64: string;
+  uploadedAt: any;
+  uploadedByUid: string;
+  uploadedByName: string;
+}
+
 // 3-Tier Role-Based Access Control (RBAC) & Audit Trail
 export type UserRole = 'super_admin' | 'admin' | 'viewer';
 export type AdminStatus = 'active' | 'paused' | 'blocked';
@@ -230,6 +278,7 @@ export type AuditActionType =
   | 'teacher_update'
   | 'subject_update'
   | 'settings_update'
+  | 'annual_plan_update'
   | 'proxy_assigned'
   | 'proxy_updated'
   | 'proxy_deleted'

@@ -118,13 +118,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Compute preview entries based on current category
   const previewData = useMemo(() => {
+    const formatClassTeacher = (teacherId?: string) => {
+      if (!teacherId) return null;
+      const t = teacherMap.get(teacherId);
+      return t ? `Class Teacher: ${t.name} (${t.initials})` : null;
+    };
+
     if (activeCategory === 'section') {
       const entries = fullAppState.entries.filter(
         e => e.classId === selectedClassId && e.sectionId === selectedSectionId
       );
+      const ctText = formatClassTeacher(selectedSection?.classTeacherId);
       return {
         title: `${selectedClass?.name || 'Class'} — ${selectedSection?.name || 'Section'} Routine`,
-        subTitle: `Room: ${selectedSection?.roomNumber || 'Standard Classroom'} • Total Periods: ${entries.length} / week`,
+        subTitle: [
+          `Room: ${selectedSection?.roomNumber || 'Standard Classroom'}`,
+          ctText,
+          `Total Periods: ${entries.length} / week`,
+        ]
+          .filter(Boolean)
+          .join(' • '),
         entries,
         mode: 'class' as const,
       };
@@ -134,9 +147,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const entries = fullAppState.entries.filter(
         e => e.classId === selectedClassId && e.sectionId === selectedSectionId
       );
+      const ctText = formatClassTeacher(selectedSection?.classTeacherId);
       return {
         title: `${selectedClass?.name || 'Class'} Routine (${selectedSection?.name || 'Section'})`,
-        subTitle: `${selectedClass?.sections.length || 0} Sections total in this class • Showing preview of ${selectedSection?.name}`,
+        subTitle: [
+          ctText,
+          `${selectedClass?.sections.length || 0} Sections total in this class`,
+          `Showing preview of ${selectedSection?.name}`,
+        ]
+          .filter(Boolean)
+          .join(' • '),
         entries,
         mode: 'class' as const,
       };
@@ -159,9 +179,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const entries = fullAppState.entries.filter(
         e => e.classId === targetClass?.id && e.sectionId === targetSec?.id
       );
+      const ctText = formatClassTeacher(targetSec?.classTeacherId);
       return {
         title: `Complete School Timetable • ${targetClass?.name} - ${targetSec?.name}`,
-        subTitle: `Sample Page (Class ${targetClass?.name}) from master unified routine of all ${classes.length} classes`,
+        subTitle: [
+          ctText,
+          `Sample Page (Class ${targetClass?.name}) from master unified routine of all ${classes.length} classes`,
+        ]
+          .filter(Boolean)
+          .join(' • '),
         entries,
         mode: 'class' as const,
       };

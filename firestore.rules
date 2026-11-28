@@ -141,6 +141,7 @@ service cloud.firestore {
           'teacher_update',
           'subject_update',
           'settings_update',
+          'annual_plan_update',
           'proxy_assigned',
           'proxy_updated',
           'proxy_deleted',
@@ -218,6 +219,60 @@ service cloud.firestore {
         && data.updatedAt is timestamp
         && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
         && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100;
+    }
+
+    function isValidAnnualPlan(data) {
+      return data.keys().hasAll([
+          'id', 'academicYear', 'classId', 'subjectId',
+          'totalClassesPlanned', 'completedClasses', 'topics', 'fileRefs',
+          'updatedAt', 'updatedByUid', 'updatedByName'
+        ])
+        && data.keys().hasOnly([
+          'id', 'academicYear', 'classId', 'subjectId',
+          'totalClassesPlanned', 'completedClasses', 'topics', 'fileRefs',
+          'updatedAt', 'updatedByUid', 'updatedByName'
+        ])
+        && isValidId(data.id)
+        && data.academicYear is string && data.academicYear.size() >= 1 && data.academicYear.size() <= 40
+        && data.classId is string && data.classId.size() >= 1 && data.classId.size() <= 100
+        && data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 100
+        && data.totalClassesPlanned is int && data.totalClassesPlanned >= 1 && data.totalClassesPlanned <= 500
+        && data.completedClasses is int && data.completedClasses >= 0 && data.completedClasses <= 500
+        && data.topics is list && data.topics.size() <= 350
+        && (data.topics.size() == 0 || data.topics[0] is map)
+        && data.fileRefs is list && data.fileRefs.size() <= 15
+        && (data.fileRefs.size() == 0 || data.fileRefs[0] is map)
+        && data.updatedAt is timestamp
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100;
+    }
+
+    function isValidLessonPlanFile(data) {
+      return data.keys().hasAll([
+          'id', 'planId', 'classId', 'subjectId', 'fileName',
+          'mimeType', 'fileSize', 'dataBase64', 'uploadedAt', 'uploadedByUid', 'uploadedByName'
+        ])
+        && data.keys().hasOnly([
+          'id', 'planId', 'classId', 'subjectId', 'fileName',
+          'mimeType', 'fileSize', 'dataBase64', 'uploadedAt', 'uploadedByUid', 'uploadedByName'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.planId)
+        && data.classId is string && data.classId.size() >= 1 && data.classId.size() <= 100
+        && data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 100
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 160
+        && data.mimeType in [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ]
+        && data.fileSize is int && data.fileSize >= 1 && data.fileSize <= 600000
+        && data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 820000
+        && data.uploadedAt is timestamp
+        && data.uploadedByUid is string && data.uploadedByUid.size() >= 1 && data.uploadedByUid.size() <= 128
+        && data.uploadedByName is string && data.uploadedByName.size() >= 1 && data.uploadedByName.size() <= 100;
     }
 
     // 4. Collection Match Blocks
@@ -423,6 +478,53 @@ service cloud.firestore {
         && incoming().updatedByEmail == currentEmail()
         && canEditRoutine();
       allow delete: if isValidId(dateId) && canEditRoutine();
+    }
+
+    // Annual Class-wise Subject Tracker & Topic Schedule (zero PII; non-sensitive academic syllabus)
+    match /annual_plans/{planId} {
+      allow get: if isValidId(planId);
+      allow list: if true;
+      allow create: if isSignedIn()
+        && isValidId(planId)
+        && isValidAnnualPlan(incoming())
+        && incoming().id == planId
+        && incoming().updatedAt == request.time
+        && incoming().updatedByUid == request.auth.uid
+        && isVerifiedUser()
+        && canEditRoutine();
+      allow update: if isSignedIn()
+        && isValidId(planId)
+        && isValidAnnualPlan(incoming())
+        && incoming().id == existing().id
+        && incoming().academicYear == existing().academicYear
+        && incoming().classId == existing().classId
+        && incoming().subjectId == existing().subjectId
+        && incoming().updatedAt == request.time
+        && incoming().updatedByUid == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'totalClassesPlanned', 'completedClasses', 'topics', 'fileRefs',
+          'updatedAt', 'updatedByUid', 'updatedByName'
+        ])
+        && isVerifiedUser()
+        && canEditRoutine();
+      allow delete: if isValidId(planId) && canEditRoutine();
+    }
+
+    // Lesson Plan Files (Word / PDF / Excel) — fetched individually by exact fileId; bulk list disabled
+    match /lesson_plan_files/{fileId} {
+      allow get: if isValidId(fileId);
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(fileId)
+        && isValidLessonPlanFile(incoming())
+        && incoming().id == fileId
+        && incoming().uploadedAt == request.time
+        && incoming().uploadedByUid == request.auth.uid
+        && isVerifiedUser()
+        && canEditRoutine()
+        && exists(/databases/$(database)/documents/annual_plans/$(incoming().planId));
+      allow update: if false;
+      allow delete: if isValidId(fileId) && canEditRoutine();
     }
 
     // Firestore connectivity check document

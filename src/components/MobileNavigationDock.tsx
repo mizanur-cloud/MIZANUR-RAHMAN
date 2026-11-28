@@ -26,6 +26,7 @@ import {
   LogIn,
   LogOut,
   Lock,
+  ClipboardList,
 } from 'lucide-react';
 import { WorkspaceTab } from './Navbar';
 import { useViewMode } from '../context/ViewModeContext';
@@ -222,12 +223,12 @@ export const MobileNavigationDock: React.FC<MobileNavigationDockProps> = ({
             type="button"
             onClick={() => setIsOpenMenu(!isOpenMenu)}
             className={`relative min-h-[44px] h-full flex flex-col items-center justify-center gap-1 transition-colors ${
-              isOpenMenu || activeTab === 'conflicts' || activeTab === 'control-panel' || (canEdit && activeTab === 'master')
+              isOpenMenu || activeTab === 'annual-plan' || activeTab === 'conflicts' || activeTab === 'control-panel' || (canEdit && activeTab === 'master')
                 ? 'text-[#145343] dark:text-emerald-400 font-bold'
                 : 'text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            {(isOpenMenu || activeTab === 'conflicts' || activeTab === 'control-panel') && (
+            {(isOpenMenu || activeTab === 'annual-plan' || activeTab === 'conflicts' || activeTab === 'control-panel') && (
               <span className="absolute top-0 w-7 h-0.5 rounded-full bg-[#145343] dark:bg-emerald-400" />
             )}
             <Menu className="w-[19px] h-[19px]" />
@@ -326,6 +327,22 @@ export const MobileNavigationDock: React.FC<MobileNavigationDockProps> = ({
                   >
                     <Grid3X3 className="w-4 h-4 shrink-0" />
                     <span className="truncate">মাস্টার ম্যাট্রিক্স</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('annual-plan');
+                      setIsOpenMenu(false);
+                    }}
+                    className={`min-h-[44px] px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 text-left transition-colors ${
+                      activeTab === 'annual-plan'
+                        ? 'bg-[#eef5f2] dark:bg-emerald-950/60 border-[#145343] text-[#145343] dark:text-emerald-300'
+                        : 'bg-white dark:bg-slate-900 border-stone-200 dark:border-slate-800 text-stone-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <ClipboardList className="w-4 h-4 shrink-0" />
+                    <span className="truncate">বার্ষিক সিলেবাস ও প্ল্যান</span>
                   </button>
 
                   {canEdit && (

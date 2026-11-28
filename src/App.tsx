@@ -5,12 +5,15 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { saveAs } from 'file-saver';
 import {
   AdminAccount,
+  AnnualSubjectPlan,
   AuditActionType,
   AuditLogEntry,
   DailyAbsenceRecord,
   DayOfWeek,
+  LessonPlanFileMeta,
   ProxyLogEntry,
   ProxyLogStatus,
   RoutineConflict,
@@ -23,11 +26,13 @@ import {
 import {
   AppState,
   clearSensitiveOfflineCaches,
+  loadStoredAnnualPlans,
   loadStoredDailyAbsences,
   loadStoredData,
   loadStoredProxyLogs,
   resetToDefaults,
   saveRoutineSnapshot,
+  saveStoredAnnualPlans,
   saveStoredDailyAbsences,
   saveStoredData,
   saveStoredProxyLogs,
@@ -37,21 +42,27 @@ import { generateSmartTimetable, autoFixRoutine, GenerationOptions, GenerationRe
 import { syncTeacherAssignmentsToClasses, syncClassesToTeachers } from './services/teacherSubjectSync';
 import { useAuth } from './context/AuthContext';
 import {
+  deleteLessonPlanFileFromCloud,
   deleteProxyLogFromCloud,
+  fetchLessonPlanFileFromCloud,
   PublishedRoutineMetadata,
   PublishedRoutineSchedule,
+  saveAnnualPlanToCloud,
   saveDailyAbsenceToCloud,
   saveProxyLogToCloud,
   saveRoutineToCloud,
   StaffContactMap,
   subscribeAllAdmins,
+  subscribeAnnualPlans,
   subscribeAuditLogs,
   subscribeDailyAbsences,
   subscribeProxyLogs,
   subscribePublishedRoutine,
   subscribeStaffContacts,
   updateProxyLogStatusInCloud,
+  uploadLessonPlanFileToCloud,
 } from './services/rbacService';
+import { base64ToUint8Array } from './services/annualPlanUtils';
 import {
   AGRICULTURE_ROOM,
   areParallelSubjects,
@@ -90,6 +101,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { LoginModal } from './components/LoginModal';
 import { ControlPanelView } from './components/ControlPanelView';
 import { LiveDashboardView } from './components/LiveDashboardView';
+import { AnnualPlanDashboardView } from './components/AnnualPlanDashboardView';
 import { SchoolCrestLogo } from './components/SchoolCrestLogo';
 import { MobileNavigationDock } from './components/MobileNavigationDock';
 import { useViewMode } from './context/ViewModeContext';
@@ -147,6 +159,7 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [proxyLogs, setProxyLogs] = useState<ProxyLogEntry[]>([]);
   const [dailyAbsences, setDailyAbsences] = useState<Record<string, DailyAbsenceRecord>>({});
+  const [annualPlans, setAnnualPlans] = useState<AnnualSubjectPlan[]>(() => loadStoredAnnualPlans());
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [secretRouteRequested, setSecretRouteRequested] = useState<boolean>(() => isSecretControlRoute());
@@ -317,6 +330,17 @@ export default function App() {
     );
     return () => unsub();
   }, [applyMergedCloudState, showNotice]);
+
+  useEffect(() => {
+    const unsub = subscribeAnnualPlans(
+      plans => {
+        setAnnualPlans(plans);
+        saveStoredAnnualPlans(plans);
+      },
+      msg => showNotice(msg)
+    );
+    return () => unsub();
+  }, [showNotice]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -971,6 +995,36 @@ export default function App() {
     );
   };
 
+  const handleUpdateSectionClassTeacher = (classId: string, sectionId: string, teacherId: string) => {
+    const cleanTeacherId = teacherId.trim();
+    commitData(
+      prev => {
+        let changed = false;
+        const updatedClasses = prev.classes.map(cls => {
+          if (cls.id !== classId) return cls;
+          return {
+            ...cls,
+            sections: cls.sections.map(sec => {
+              if (sec.id !== sectionId) return sec;
+              const prevId = sec.classTeacherId || '';
+              if (prevId === cleanTeacherId) return sec;
+              changed = true;
+              return { ...sec, classTeacherId: cleanTeacherId || undefined };
+            }),
+          };
+        });
+        if (!changed) return prev;
+        return {
+          ...prev,
+          classes: updatedClasses,
+        };
+      },
+      cleanTeacherId ? 'শ্রেণি শিক্ষক নির্ধারিত হয়েছে।' : 'শ্রেণি শিক্ষক অপসারণ করা হয়েছে।',
+      'class_update',
+      `শ্রেণি শিক্ষক নির্ধারণ (${classId}/${sectionId})`
+    );
+  };
+
   const handleUpdateSectionSubjects = (
     classId: string,
     sectionId: string,
@@ -1151,6 +1205,9 @@ export default function App() {
       const updatedClasses = prev.classes.map(c => ({
         ...c,
         blockTeacherIds: c.blockTeacherIds ? c.blockTeacherIds.filter(id => id !== teacherId) : undefined,
+        sections: c.sections.map(sec =>
+          sec.classTeacherId === teacherId ? { ...sec, classTeacherId: undefined } : sec
+        ),
         subjectRequirements: c.subjectRequirements.map(req =>
           req.assignedTeacherId === teacherId ? { ...req, assignedTeacherId: undefined } : req
         ),
@@ -1634,6 +1691,121 @@ export default function App() {
     }
   };
 
+  const upsertLocalAnnualPlan = (nextPlan: AnnualSubjectPlan) => {
+    setAnnualPlans(prev => {
+      const idx = prev.findIndex(p => p.id === nextPlan.id);
+      const next = idx >= 0 ? prev.map((p, i) => (i === idx ? nextPlan : p)) : [nextPlan, ...prev];
+      saveStoredAnnualPlans(next);
+      return next;
+    });
+  };
+
+  const handleSaveAnnualPlan = async (plan: AnnualSubjectPlan, summary: string) => {
+    if (!canEdit || !email || !firebaseUser) {
+      showNotice('অনুমতি নেই: শুধুমাত্র অনুমোদিত Admin বার্ষিক সিলেবাস পরিবর্তন করতে পারবেন।');
+      return;
+    }
+    upsertLocalAnnualPlan(plan);
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      await saveAnnualPlanToCloud({
+        plan,
+        actorUid: firebaseUser.uid,
+        actorEmail: email,
+        actorName: displayName,
+        actorRole,
+        summary,
+      });
+      showNotice('বার্ষিক পরিকল্পনা ক্লাউডে সংরক্ষিত হয়েছে।');
+    } catch (err) {
+      console.error('Failed to save annual plan:', err);
+      showNotice('বার্ষিক পরিকল্পনা সংরক্ষণে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleUploadLessonPlanFile = async (params: {
+    plan: AnnualSubjectPlan;
+    fileMeta: LessonPlanFileMeta;
+    dataBase64: string;
+    summary: string;
+  }) => {
+    if (!canEdit || !email || !firebaseUser) {
+      showNotice('অনুমতি নেই: ফাইল আপলোড করতে Admin লগইন প্রয়োজন।');
+      return;
+    }
+    const updatedPlan: AnnualSubjectPlan = {
+      ...params.plan,
+      fileRefs: [params.fileMeta, ...(params.plan.fileRefs || []).filter(r => r.id !== params.fileMeta.id)],
+      updatedAt: new Date().toISOString(),
+      updatedByUid: firebaseUser.uid,
+      updatedByName: displayName,
+    };
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    await uploadLessonPlanFileToCloud({
+      plan: params.plan,
+      fileMeta: params.fileMeta,
+      dataBase64: params.dataBase64,
+      actorUid: firebaseUser.uid,
+      actorEmail: email,
+      actorName: displayName,
+      actorRole,
+      summary: params.summary,
+    });
+    upsertLocalAnnualPlan(updatedPlan);
+    showNotice(`লেসন প্ল্যান "${params.fileMeta.fileName}" আপলোড সম্পন্ন হয়েছে।`);
+  };
+
+  const handleDownloadLessonPlanFile = async (fileMeta: LessonPlanFileMeta) => {
+    try {
+      const docData = await fetchLessonPlanFileFromCloud(fileMeta.id);
+      if (!docData || !docData.dataBase64) {
+        showNotice('লেসন প্ল্যান ফাইলটি সার্ভারে পাওয়া যায়নি।');
+        return;
+      }
+      const bytes = base64ToUint8Array(docData.dataBase64);
+      const blob = new Blob([bytes as BlobPart], { type: fileMeta.mimeType });
+      saveAs(blob, fileMeta.fileName);
+    } catch (err) {
+      console.error('Failed to download lesson plan file:', err);
+      showNotice('ফাইল ডাউনলোড করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleDeleteLessonPlanFile = async (
+    plan: AnnualSubjectPlan,
+    fileMeta: LessonPlanFileMeta,
+    summary: string
+  ) => {
+    if (!canEdit || !email || !firebaseUser) {
+      showNotice('অনুমতি নেই: ফাইল মুছতে পারবেন না।');
+      return;
+    }
+    const updatedPlan: AnnualSubjectPlan = {
+      ...plan,
+      fileRefs: (plan.fileRefs || []).filter(f => f.id !== fileMeta.id),
+      updatedAt: new Date().toISOString(),
+      updatedByUid: firebaseUser.uid,
+      updatedByName: displayName,
+    };
+    const actorRole: 'super_admin' | 'admin' = isSuperAdmin ? 'super_admin' : 'admin';
+    try {
+      await deleteLessonPlanFileFromCloud({
+        plan,
+        fileId: fileMeta.id,
+        actorUid: firebaseUser.uid,
+        actorEmail: email,
+        actorName: displayName,
+        actorRole,
+        summary,
+      });
+      upsertLocalAnnualPlan(updatedPlan);
+      showNotice(`"${fileMeta.fileName}" মুছে ফেলা হয়েছে।`);
+    } catch (err) {
+      console.error('Failed to delete lesson plan file:', err);
+      showNotice('ফাইল মুছতে সমস্যা হয়েছে।');
+    }
+  };
+
   const routeAccessDenied = authReady && secretRouteRequested && !isSuperAdmin;
 
   const handleSelectTab = (tab: WorkspaceTab) => {
@@ -1780,6 +1952,7 @@ export default function App() {
             canEdit={canEdit}
             isSuperAdmin={isSuperAdmin}
             onOpenLiveDashboard={() => setActiveTab('live')}
+            onOpenAnnualPlan={() => setActiveTab('annual-plan')}
             onOpenClassMgmt={() => canEdit && setIsClassMgmtOpen(true)}
             onOpenTeacherMgmt={() => canEdit && setIsTeacherMgmtOpen(true)}
             onOpenSubjectMgmt={() => canEdit && setIsSubjectMgmtOpen(true)}
@@ -1873,6 +2046,7 @@ export default function App() {
                   onUpdateSectionSubjects={handleUpdateSectionSubjects}
                   onUpdateSectionSubjectConfig={handleUpdateSectionSubjectConfig}
                   onUpdateSectionRoom={handleUpdateSectionRoom}
+                  onUpdateSectionClassTeacher={handleUpdateSectionClassTeacher}
                   settings={data.settings}
                   fullAppState={data}
                   readOnly={!canEdit}
@@ -1912,6 +2086,26 @@ export default function App() {
                     if (canEdit) setEditSlot({ classId, sectionId, day, periodIndex });
                   }}
                   readOnly={!canEdit}
+                />
+              )}
+
+              {activeTab === 'annual-plan' && (
+                <AnnualPlanDashboardView
+                  classes={data.classes}
+                  subjects={data.subjects}
+                  teachers={data.teachers}
+                  entries={data.entries}
+                  settings={data.settings}
+                  selectedClassId={selectedClassId}
+                  setSelectedClassId={setSelectedClassId}
+                  annualPlans={annualPlans}
+                  actorUid={firebaseUser?.uid}
+                  actorName={displayName}
+                  readOnly={!canEdit}
+                  onSaveAnnualPlan={handleSaveAnnualPlan}
+                  onUploadLessonPlanFile={handleUploadLessonPlanFile}
+                  onDownloadLessonPlanFile={handleDownloadLessonPlanFile}
+                  onDeleteLessonPlanFile={handleDeleteLessonPlanFile}
                 />
               )}
 

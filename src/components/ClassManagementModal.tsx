@@ -173,6 +173,20 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
     }, 2000);
   };
 
+  const handleUpdateSectionClassTeacher = (sectionId: string, teacherId: string) => {
+    const cleanTeacherId = teacherId.trim();
+    const updated = classes.map(c => {
+      if (c.id !== activeClass.id) return c;
+      return {
+        ...c,
+        sections: c.sections.map(s =>
+          s.id === sectionId ? { ...s, classTeacherId: cleanTeacherId || undefined } : s
+        ),
+      };
+    });
+    onUpdateClasses(updated);
+  };
+
   // Update subject requirement periods/week
   const handleUpdateRequirement = (
     subjectId: string,
@@ -807,6 +821,25 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                             <span>সেভ</span>
                           </span>
                         ) : null}
+                      </div>
+
+                      <div className="pt-0.5">
+                        <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                          শ্রেণি শিক্ষক (Class Teacher)
+                        </label>
+                        <select
+                          aria-label={`${activeClass.name} ${sec.name} Class Teacher`}
+                          value={sec.classTeacherId || ''}
+                          onChange={e => handleUpdateSectionClassTeacher(sec.id, e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[#145343]"
+                        >
+                          <option value="">নির্ধারিত নয় (Unassigned)</option>
+                          {teachers.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.initials})
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   );

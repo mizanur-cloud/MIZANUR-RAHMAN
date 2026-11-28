@@ -181,6 +181,7 @@ export const LiveDashboardView: React.FC<LiveDashboardViewProps> = ({
       sectionId: string;
       sectionName: string;
       room?: string;
+      classTeacherId?: string;
       status: 'offline' | 'break' | 'dismissed' | 'active' | 'free';
       slotEntries: TimetableEntry[];
       nextSlotEntries: TimetableEntry[];
@@ -253,6 +254,7 @@ export const LiveDashboardView: React.FC<LiveDashboardViewProps> = ({
           sectionId: sec.id,
           sectionName: sec.name,
           room: sec.roomNumber,
+          classTeacherId: sec.classTeacherId,
           status,
           slotEntries: currentEntries,
           nextSlotEntries: nextEntries,
@@ -707,25 +709,34 @@ export const LiveDashboardView: React.FC<LiveDashboardViewProps> = ({
                       : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 sm:gap-px bg-stone-200/70 dark:bg-slate-800'
                   }
                 >
-                  {items.map(item => (
+                  {items.map(item => {
+                    const ct = item.classTeacherId ? teacherMap.get(item.classTeacherId) : undefined;
+                    return (
                     <button
                       key={`${cls.id}-${item.sectionId}`}
                       type="button"
                       onClick={() => onSelectClassSection(cls.id, item.sectionId)}
                       className="text-left p-4 bg-white dark:bg-[#141a20] hover:bg-stone-50 dark:hover:bg-slate-800/50 transition-colors flex flex-col justify-between gap-2.5 group"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-bold text-sm text-stone-900 dark:text-white truncate">
-                            {item.sectionName}
-                          </span>
-                          {item.room && (
-                            <span className="text-[11px] font-mono text-stone-500 dark:text-slate-400 shrink-0">
-                              রুম {item.room}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-sm text-stone-900 dark:text-white truncate">
+                              {item.sectionName}
                             </span>
-                          )}
+                            {item.room && (
+                              <span className="text-[11px] font-mono text-stone-500 dark:text-slate-400 shrink-0">
+                                রুম {item.room}
+                              </span>
+                            )}
+                          </div>
+                          <ArrowUpRight className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                         </div>
-                        <ArrowUpRight className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        {ct && (
+                          <div className="text-[11px] font-medium text-[#145343] dark:text-emerald-400 truncate">
+                            শ্রেণি শিক্ষক: {ct.name} ({ct.initials})
+                          </div>
+                        )}
                       </div>
 
                       {item.status === 'active' ? (
@@ -789,7 +800,8 @@ export const LiveDashboardView: React.FC<LiveDashboardViewProps> = ({
                           </div>
                         )}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))

@@ -74,6 +74,8 @@ export async function exportTimetableExcel(state: AppState): Promise<void> {
     const tch = teacherMap.get(e.teacherId);
     const period = periodMap.get(e.periodIndex);
 
+    const ct = sec?.classTeacherId ? teacherMap.get(sec.classTeacherId) : undefined;
+
     return {
       Day: sanitizeSpreadsheetCell(e.day),
       Period: sanitizeSpreadsheetCell(period?.label || `Period ${e.periodIndex}`),
@@ -81,6 +83,7 @@ export async function exportTimetableExcel(state: AppState): Promise<void> {
       'End Time': sanitizeSpreadsheetCell(period?.endTime || ''),
       Class: sanitizeSpreadsheetCell(cls?.name || 'Class'),
       Section: sanitizeSpreadsheetCell(sec?.name || 'Section'),
+      'Class Teacher': sanitizeSpreadsheetCell(ct ? `${ct.name} (${ct.initials})` : ''),
       Subject: sanitizeSpreadsheetCell(sub?.name || 'Subject'),
       'Subject Code': sanitizeSpreadsheetCell(sub?.code || ''),
       Teacher: sanitizeSpreadsheetCell(tch?.name || 'Teacher'),
@@ -123,6 +126,7 @@ export async function exportTimetableExcel(state: AppState): Promise<void> {
   const classQuotaData: Record<string, string | number>[] = [];
   classes.forEach(c => {
     c.sections.forEach(s => {
+      const ct = s.classTeacherId ? teacherMap.get(s.classTeacherId) : undefined;
       getEffectiveSectionRequirements(c, s.id, teachers).forEach(req => {
         const sub = subjectMap.get(req.subjectId);
         const assignedPeriods = entries.filter(
@@ -132,6 +136,7 @@ export async function exportTimetableExcel(state: AppState): Promise<void> {
         classQuotaData.push({
           Class: sanitizeSpreadsheetCell(c.name),
           Section: sanitizeSpreadsheetCell(s.name),
+          'Class Teacher': sanitizeSpreadsheetCell(ct ? `${ct.name} (${ct.initials})` : ''),
           Subject: sanitizeSpreadsheetCell(sub?.name || req.subjectId),
           'Required Periods/Week': req.periodsPerWeek,
           'Scheduled Periods': assignedPeriods,

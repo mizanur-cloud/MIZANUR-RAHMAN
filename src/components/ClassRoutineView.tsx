@@ -30,6 +30,7 @@ import {
   Clock,
   MapPin,
   Check,
+  UserCheck,
 } from 'lucide-react';
 import { useViewMode } from '../context/ViewModeContext';
 import { BENGALI_DAY_NAMES, isSlotDismissed, getTierBadgeInfo } from '../services/scheduleTiers';
@@ -88,6 +89,7 @@ interface ClassRoutineViewProps {
     patch: { periodsPerWeek?: number; assignedTeacherId?: string; fixedPeriodIndices?: number[] }
   ) => void;
   onUpdateSectionRoom?: (classId: string, sectionId: string, roomNumber: string) => void;
+  onUpdateSectionClassTeacher?: (classId: string, sectionId: string, teacherId: string) => void;
   settings?: SchoolSettings;
   fullAppState: AppState;
   readOnly?: boolean;
@@ -115,6 +117,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   onUpdateSectionSubjects,
   onUpdateSectionSubjectConfig,
   onUpdateSectionRoom,
+  onUpdateSectionClassTeacher,
   settings,
   fullAppState,
   readOnly = false,
@@ -134,6 +137,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [isEditingRoom, setIsEditingRoom] = useState(false);
   const [roomDraft, setRoomDraft] = useState('');
+  const [isEditingClassTeacher, setIsEditingClassTeacher] = useState(false);
   const { isMobileView } = useViewMode();
   const [mobileFormat, setMobileFormat] = useState<'cards' | 'grid'>('cards');
   const [mobileDay, setMobileDay] = useState<DayOfWeek>(() => {
@@ -144,10 +148,15 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   const [now, setNow] = useState<Date>(() => new Date());
   const touchStartXRef = useRef<number | null>(null);
 
+  const selectedClassTeacher = selectedSection?.classTeacherId
+    ? teacherMap.get(selectedSection.classTeacherId)
+    : undefined;
+
   useEffect(() => {
     setIsEditingRoom(false);
     setRoomDraft(selectedSection?.roomNumber || '');
-  }, [selectedClass?.id, selectedSection?.id, selectedSection?.roomNumber]);
+    setIsEditingClassTeacher(false);
+  }, [selectedClass?.id, selectedSection?.id, selectedSection?.roomNumber, selectedSection?.classTeacherId]);
 
   const commitRoomEdit = () => {
     if (!selectedClass || !selectedSection || !onUpdateSectionRoom) return;
@@ -453,6 +462,58 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                       }}
                       className="p-0.5 text-[#145343] dark:text-emerald-400 hover:bg-[#eef5f2] dark:hover:bg-emerald-950/50 rounded"
                       title="রুম নম্বর এডিট করুন"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              )}
+              <span>·</span>
+              {!readOnly && onUpdateSectionClassTeacher && isEditingClassTeacher ? (
+                <div className="flex items-center gap-1">
+                  <select
+                    aria-label="শ্রেণি শিক্ষক নির্বাচন"
+                    value={selectedSection?.classTeacherId || ''}
+                    onChange={e => {
+                      if (selectedClass && selectedSection) {
+                        onUpdateSectionClassTeacher(selectedClass.id, selectedSection.id, e.target.value);
+                      }
+                      setIsEditingClassTeacher(false);
+                    }}
+                    className="max-w-[170px] px-2 py-0.5 text-[11px] font-semibold bg-white dark:bg-slate-800 border border-[#145343] dark:border-emerald-600 rounded text-stone-900 dark:text-white focus:outline-none"
+                    autoFocus
+                  >
+                    <option value="">নির্ধারিত নয়</option>
+                    {teachers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.initials})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingClassTeacher(false)}
+                    className="p-1 rounded bg-stone-200 dark:bg-slate-700 text-stone-700 dark:text-slate-200"
+                    title="বাতিল"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-semibold text-stone-800 dark:text-slate-200">
+                  <UserCheck className="w-3 h-3 text-[#145343] dark:text-emerald-400 shrink-0" />
+                  <span>
+                    শ্রেণি শিক্ষক:{' '}
+                    {selectedClassTeacher
+                      ? `${selectedClassTeacher.name} (${selectedClassTeacher.initials})`
+                      : 'নির্ধারিত নয়'}
+                  </span>
+                  {!readOnly && onUpdateSectionClassTeacher && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingClassTeacher(true)}
+                      className="p-0.5 text-[#145343] dark:text-emerald-400 hover:bg-[#eef5f2] dark:hover:bg-emerald-950/50 rounded"
+                      title="শ্রেণি শিক্ষক নির্বাচন করুন"
                     >
                       <Edit className="w-3 h-3" />
                     </button>
@@ -871,6 +932,61 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                       >
                         <Edit className="w-3 h-3" />
                         <span>Edit Room</span>
+                      </button>
+                    )}
+                  </span>
+                )}
+                <span>·</span>
+                {!readOnly && onUpdateSectionClassTeacher && isEditingClassTeacher ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
+                    <select
+                      aria-label="শ্রেণি শিক্ষক নির্বাচন"
+                      value={selectedSection?.classTeacherId || ''}
+                      onChange={e => {
+                        if (selectedClass && selectedSection) {
+                          onUpdateSectionClassTeacher(selectedClass.id, selectedSection.id, e.target.value);
+                        }
+                        setIsEditingClassTeacher(false);
+                      }}
+                      className="px-2 py-0.5 text-xs font-semibold bg-white dark:bg-slate-800 border border-[#145343] dark:border-emerald-600 rounded text-slate-900 dark:text-white focus:outline-none"
+                      autoFocus
+                    >
+                      <option value="">নির্ধারিত নয় (Unassigned)</option>
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.initials})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingClassTeacher(false)}
+                      className="px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded"
+                    >
+                      Done
+                    </button>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
+                    <span>
+                      শ্রেণি শিক্ষক (Class Teacher):{' '}
+                      <strong className="text-slate-800 dark:text-slate-200">
+                        {selectedClassTeacher
+                          ? `${selectedClassTeacher.name} (${selectedClassTeacher.initials})`
+                          : 'নির্ধারিত নয়'}
+                      </strong>
+                    </span>
+                    {!readOnly && onUpdateSectionClassTeacher && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingClassTeacher(true)}
+                        className="px-1.5 py-0.5 text-[11px] font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] border border-[#bfd5cc] dark:border-emerald-800 rounded flex items-center gap-1 transition-colors"
+                        title="এই শ্রেণি ও শাখার শ্রেণি শিক্ষক নির্ধারণ করুন"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>{selectedClassTeacher ? 'Change' : 'Assign'}</span>
                       </button>
                     )}
                   </span>

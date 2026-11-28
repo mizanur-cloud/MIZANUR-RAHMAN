@@ -20,6 +20,7 @@ import {
   Radio,
   Monitor,
   Smartphone,
+  BookOpen,
 } from 'lucide-react';
 import { AdminStatus, UserRole } from '../types';
 import { SchoolCrestLogo } from './SchoolCrestLogo';
@@ -30,6 +31,7 @@ export type WorkspaceTab =
   | 'classes'
   | 'teachers'
   | 'master'
+  | 'annual-plan'
   | 'proxy'
   | 'conflicts'
   | 'control-panel';
@@ -209,6 +211,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
               <span>Master Matrix</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('annual-plan')}
+              className={`h-full flex items-center gap-1.5 px-2.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+                activeTab === 'annual-plan'
+                  ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 font-bold'
+                  : 'border-transparent text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 shrink-0" />
+              <span>Annual Plan</span>
             </button>
 
             {canEdit && (
@@ -462,6 +477,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             Master Matrix
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('annual-plan')}
+            className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap flex items-center gap-1 ${
+              activeTab === 'annual-plan'
+                ? 'bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 font-semibold'
+                : 'text-stone-600 dark:text-slate-300'
+            }`}
+          >
+            <BookOpen className="w-3 h-3" />
+            <span>Annual Plan</span>
           </button>
           {canEdit && (
             <button

@@ -14,6 +14,7 @@ interface GridSheetData {
   principalName?: string;
   title: string;
   subtitle: string;
+  metaLine?: string;
   activePeriods: PeriodTiming[];
   rows: {
     day: string;
@@ -32,6 +33,7 @@ function sheetContainsBengali(sheet: GridSheetData): boolean {
     sheet.principalName || '',
     sheet.title,
     sheet.subtitle,
+    sheet.metaLine || '',
     ...sheet.activePeriods.map(p => p.label),
     ...sheet.rows.flatMap(r => [
       r.day,
@@ -125,20 +127,26 @@ function renderCanvasGridSheetToPdf(
   ctx.fillText(
     sheet.subtitle ? `${sheet.title}  —  ${sheet.subtitle}` : sheet.title,
     W / 2,
-    210
+    202
   );
+
+  if (sheet.metaLine) {
+    ctx.fillStyle = '#145343';
+    ctx.font = `600 22px ${CANVAS_FONT_STACK}`;
+    ctx.fillText(sheet.metaLine, W / 2, 236);
+  }
 
   // Hairline divider
   ctx.strokeStyle = '#CBD5E1';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(88, 246);
-  ctx.lineTo(W - 88, 246);
+  ctx.moveTo(88, 256);
+  ctx.lineTo(W - 88, 256);
   ctx.stroke();
 
   // Grid Geometry
   const tableX = 88;
-  const tableY = 274;
+  const tableY = 278;
   const tableW = W - 176;
   const tableH = H - 410;
   const dayColW = 240;
@@ -327,11 +335,19 @@ function renderVectorGridSheetToPdf(
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
   const fullTitle = sheet.subtitle ? `${sheet.title} — ${sheet.subtitle}` : sheet.title;
-  doc.text(fullTitle, pageWidth / 2, 25, { align: 'center' });
+  doc.text(fullTitle, pageWidth / 2, 24.5, { align: 'center' });
 
+  if (sheet.metaLine) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...BRAND_RGB);
+    doc.text(sheet.metaLine, pageWidth / 2, 29.5, { align: 'center' });
+  }
+
+  const dividerY = sheet.metaLine ? 32.5 : 28;
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.5);
-  doc.line(14, 28, pageWidth - 14, 28);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   const head = [
     [
@@ -353,7 +369,7 @@ function renderVectorGridSheetToPdf(
   ]);
 
   autoTable(doc, {
-    startY: 32,
+    startY: sheet.metaLine ? 36 : 32,
     head,
     body,
     theme: 'grid',
@@ -428,6 +444,7 @@ function buildClassSectionSheet(
   cls: SchoolClass,
   secName: string,
   roomNumber: string | undefined,
+  classTeacherId: string | undefined,
   secEntries: TimetableEntry[],
   state: AppState,
   title: string,
@@ -435,12 +452,14 @@ function buildClassSectionSheet(
   teacherMap: Map<string, Teacher>
 ): GridSheetData {
   const activePeriods = state.settings.periodTimings.filter(p => !p.isBreak);
+  const ct = classTeacherId ? teacherMap.get(classTeacherId) : undefined;
   return {
     schoolName: state.settings.schoolName,
     academicYear: state.settings.academicYear,
     principalName: state.settings.principalName,
     title,
     subtitle: `${cls.name} — ${secName}${roomNumber ? ` (${roomNumber})` : ''}`,
+    metaLine: ct ? `Class Teacher: ${ct.name} (${ct.initials})` : undefined,
     activePeriods,
     rows: state.settings.workingDays.map(day => ({
       day,
@@ -511,6 +530,7 @@ export async function exportCompleteSchoolPdf(state: AppState) {
           cls,
           sec.name,
           sec.roomNumber,
+          sec.classTeacherId,
           secEntries,
           state,
           'MASTER CLASS TIMETABLE (GRID VIEW)',
@@ -541,6 +561,7 @@ export async function exportClassPdf(classId: string, state: AppState) {
       cls,
       sec.name,
       sec.roomNumber,
+      sec.classTeacherId,
       secEntries,
       state,
       `WEEKLY ROUTINE — ${cls.name.toUpperCase()}`,
@@ -566,6 +587,7 @@ export async function exportSectionPdf(classId: string, sectionId: string, state
     cls,
     sec.name,
     sec.roomNumber,
+    sec.classTeacherId,
     secEntries,
     state,
     'WEEKLY CLASS TIMETABLE',

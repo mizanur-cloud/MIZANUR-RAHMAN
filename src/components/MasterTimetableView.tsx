@@ -469,6 +469,9 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                         `${classObj.id}_${sectionId}_${activeMobilePeriod.periodIndex}`
                       ) || [];
 
+                    const classTeacherId = classObj.sections.find(s => s.id === sectionId)?.classTeacherId;
+                    const classTeacher = classTeacherId ? teacherMap.get(classTeacherId) : undefined;
+
                     return (
                       <div
                         key={`${classObj.id}-${sectionId}`}
@@ -485,6 +488,11 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                           <div className="text-xs font-bold text-[#145343] dark:text-emerald-400 truncate">
                             {classObj.name} · {sectionName}
                           </div>
+                          {classTeacher && (
+                            <div className="text-[11px] text-stone-500 dark:text-slate-400 truncate mt-0.5">
+                              শ্রেণি শিক্ষক: {classTeacher.name} ({classTeacher.initials})
+                            </div>
+                          )}
                           {isDismissed ? (
                             <div className="text-xs text-stone-400 mt-0.5">ছুটি (Class Off)</div>
                           ) : matches.length === 0 ? (
@@ -577,7 +585,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
           <table className="w-full text-left border-collapse table-fixed">
             <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="py-2.5 px-3 font-bold uppercase tracking-wider w-32 shrink-0 bg-slate-100 dark:bg-slate-800">
+                <th className={`py-2.5 px-3 font-bold uppercase tracking-wider shrink-0 bg-slate-100 dark:bg-slate-800 ${pivotMode === 'byClass' ? 'w-44' : 'w-36'}`}>
                   {pivotMode === 'byClass' ? 'Class & Sec' : 'Teacher'}
                 </th>
                 {allDisplayPeriods.map(p => {
@@ -605,13 +613,24 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
               {pivotMode === 'byClass'
                 ? allSections.map(({ classObj, sectionId, sectionName }) => {
+                    const secObj = classObj.sections.find(s => s.id === sectionId);
+                    const classTeacher = secObj?.classTeacherId
+                      ? teacherMap.get(secObj.classTeacherId)
+                      : undefined;
                     return (
                       <tr
                         key={`${classObj.id}-${sectionId}`}
                         className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
                       >
-                        <td className="py-2 px-3 font-bold text-xs text-slate-900 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap truncate">
-                          {classObj.name} - {sectionName}
+                        <td className="py-2 px-3 bg-slate-50/50 dark:bg-slate-800/20 border-r border-slate-200 dark:border-slate-800">
+                          <div className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">
+                            {classObj.name} - {sectionName}
+                          </div>
+                          {classTeacher && (
+                            <div className="text-[10px] font-medium text-[#145343] dark:text-emerald-400 truncate mt-0.5">
+                              CT: {classTeacher.name} ({classTeacher.initials})
+                            </div>
+                          )}
                         </td>
 
                         {allDisplayPeriods.map(period => {

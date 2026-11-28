@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   limit,
   onSnapshot,
   orderBy,
@@ -14,10 +15,14 @@ import {
 import {
   AdminAccount,
   AdminStatus,
+  AnnualSubjectPlan,
+  AnnualTopicItem,
   AuditActionType,
   AuditLogEntry,
   DailyAbsenceRecord,
   DayOfWeek,
+  LessonPlanFileDoc,
+  LessonPlanFileMeta,
   ProxyLogEntry,
   ProxyLogStatus,
   SchoolClass,
@@ -681,4 +686,230 @@ export async function saveDailyAbsenceToCloud(params: {
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }
+}
+
+function sanitizeTopicsForCloud(topics: AnnualTopicItem[]): AnnualTopicItem[] {
+  return topics.slice(0, 350).map((t, idx) =>
+    stripUndefined({
+      id: String(t.id || `top-${idx + 1}`).slice(0, 100),
+      classNumber: Math.max(1, Math.min(500, Math.round(Number(t.classNumber) || idx + 1))),
+      ...(t.date ? { date: String(t.date).slice(0, 20) } : {}),
+      topic: String(t.topic || '').slice(0, 300),
+      isCompleted: Boolean(t.isCompleted),
+      ...(t.notes ? { notes: String(t.notes).slice(0, 400) } : {}),
+    })
+  );
+}
+
+function sanitizeFileRefsForCloud(fileRefs: LessonPlanFileMeta[]): LessonPlanFileMeta[] {
+  return fileRefs.slice(0, 15).map(f =>
+    stripUndefined({
+      id: String(f.id).slice(0, 160),
+      fileName: String(f.fileName || 'lesson-plan').slice(0, 160),
+      mimeType: String(f.mimeType).slice(0, 120),
+      fileSize: Math.max(1, Math.min(600000, Math.round(Number(f.fileSize) || 1))),
+      uploadedAtIso: String(f.uploadedAtIso || new Date().toISOString()).slice(0, 40),
+      uploadedByName: String(f.uploadedByName || 'Admin').slice(0, 100),
+    })
+  );
+}
+
+function buildSanitizedAnnualPlanDoc(plan: AnnualSubjectPlan, actorUid: string, actorName: string) {
+  const cleanUid = (actorUid || auth.currentUser?.uid || 'admin').slice(0, 128);
+  const cleanName = (actorName.trim() || 'Admin').slice(0, 100);
+  const total = Math.max(1, Math.min(500, Math.round(Number(plan.totalClassesPlanned) || 1)));
+  const completed = Math.max(0, Math.min(500, Math.round(Number(plan.completedClasses) || 0)));
+
+  return {
+    id: plan.id.slice(0, 160),
+    academicYear: (plan.academicYear || '2026').slice(0, 40),
+    classId: plan.classId.slice(0, 100),
+    subjectId: plan.subjectId.slice(0, 100),
+    totalClassesPlanned: total,
+    completedClasses: completed,
+    topics: sanitizeTopicsForCloud(plan.topics || []),
+    fileRefs: sanitizeFileRefsForCloud(plan.fileRefs || []),
+    updatedAt: serverTimestamp(),
+    updatedByUid: cleanUid,
+    updatedByName: cleanName,
+  };
+}
+
+export function subscribeAnnualPlans(
+  onPlans: (plans: AnnualSubjectPlan[]) => void,
+  onSyncError?: (msg: string) => void
+): Unsubscribe {
+  const path = 'annual_plans';
+  const q = query(collection(db, 'annual_plans'), limit(500));
+  return onSnapshot(
+    q,
+    snap => {
+      const list = snap.docs.map(d => d.data() as AnnualSubjectPlan);
+      onPlans(list);
+    },
+    err => {
+      console.error('Annual plans snapshot error:', err);
+      onSyncError?.('বার্ষিক সিলেবাস ও লেসন প্ল্যান সিঙ্ক করতে সমস্যা হয়েছে।');
+      try {
+        handleFirestoreError(err, OperationType.LIST, path);
+      } catch {
+        // Logged structured FirestoreErrorInfo
+      }
+    }
+  );
+}
+
+export async function saveAnnualPlanToCloud(params: {
+  plan: AnnualSubjectPlan;
+  actorUid: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+  summary: string;
+}): Promise<void> {
+  const path = `annual_plans/${params.plan.id}`;
+  const payload = buildSanitizedAnnualPlanDoc(params.plan, params.actorUid, params.actorName);
+
+  try {
+    await setDoc(doc(db, 'annual_plans', params.plan.id), payload);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+
+  await recordAuditLog({
+    action: 'annual_plan_update',
+    targetSummary: params.summary,
+    actorEmail: params.actorEmail,
+    actorName: params.actorName,
+    actorRole: params.actorRole,
+  });
+}
+
+export async function uploadLessonPlanFileToCloud(params: {
+  plan: AnnualSubjectPlan;
+  fileMeta: LessonPlanFileMeta;
+  dataBase64: string;
+  actorUid: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+  summary: string;
+}): Promise<void> {
+  const { plan, fileMeta, dataBase64, actorUid, actorEmail, actorName, actorRole, summary } = params;
+  const cleanUid = (actorUid || auth.currentUser?.uid || '').slice(0, 128);
+  const cleanName = (actorName.trim() || 'Admin').slice(0, 100);
+
+  // Step 1: Ensure parent annual_plan doc exists BEFORE creating lesson_plan_files doc (enforces exists() rule)
+  const parentPath = `annual_plans/${plan.id}`;
+  try {
+    const existingRefs = (plan.fileRefs || []).filter(r => r.id !== fileMeta.id);
+    const preParentPayload = buildSanitizedAnnualPlanDoc(
+      { ...plan, fileRefs: existingRefs },
+      cleanUid,
+      cleanName
+    );
+    await setDoc(doc(db, 'annual_plans', plan.id), preParentPayload);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, parentPath);
+  }
+
+  // Step 2: Upload immutable file document in /lesson_plan_files/{fileId}
+  const filePath = `lesson_plan_files/${fileMeta.id}`;
+  try {
+    await setDoc(doc(db, 'lesson_plan_files', fileMeta.id), {
+      id: fileMeta.id.slice(0, 160),
+      planId: plan.id.slice(0, 160),
+      classId: plan.classId.slice(0, 100),
+      subjectId: plan.subjectId.slice(0, 100),
+      fileName: fileMeta.fileName.slice(0, 160),
+      mimeType: fileMeta.mimeType,
+      fileSize: Math.max(1, Math.min(600000, Math.round(fileMeta.fileSize))),
+      dataBase64,
+      uploadedAt: serverTimestamp(),
+      uploadedByUid: cleanUid,
+      uploadedByName: cleanName,
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, filePath);
+  }
+
+  // Step 3: Update fileRefs on parent annual_plan
+  try {
+    const nextRefs = sanitizeFileRefsForCloud([
+      fileMeta,
+      ...(plan.fileRefs || []).filter(r => r.id !== fileMeta.id),
+    ]);
+    await updateDoc(doc(db, 'annual_plans', plan.id), {
+      fileRefs: nextRefs,
+      updatedAt: serverTimestamp(),
+      updatedByUid: cleanUid,
+      updatedByName: cleanName,
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, parentPath);
+  }
+
+  await recordAuditLog({
+    action: 'annual_plan_update',
+    targetSummary: summary,
+    actorEmail,
+    actorName,
+    actorRole,
+  });
+}
+
+export async function fetchLessonPlanFileFromCloud(
+  fileId: string
+): Promise<LessonPlanFileDoc | null> {
+  const path = `lesson_plan_files/${fileId}`;
+  try {
+    const snap = await getDoc(doc(db, 'lesson_plan_files', fileId));
+    if (!snap.exists()) return null;
+    return snap.data() as LessonPlanFileDoc;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+    return null;
+  }
+}
+
+export async function deleteLessonPlanFileFromCloud(params: {
+  plan: AnnualSubjectPlan;
+  fileId: string;
+  actorUid: string;
+  actorEmail: string;
+  actorName: string;
+  actorRole: 'super_admin' | 'admin';
+  summary: string;
+}): Promise<void> {
+  const { plan, fileId, actorUid, actorEmail, actorName, actorRole, summary } = params;
+  const filePath = `lesson_plan_files/${fileId}`;
+  const planPath = `annual_plans/${plan.id}`;
+
+  try {
+    await deleteDoc(doc(db, 'lesson_plan_files', fileId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, filePath);
+  }
+
+  try {
+    const nextPlanPayload = buildSanitizedAnnualPlanDoc(
+      {
+        ...plan,
+        fileRefs: (plan.fileRefs || []).filter(f => f.id !== fileId),
+      },
+      actorUid,
+      actorName
+    );
+    await setDoc(doc(db, 'annual_plans', plan.id), nextPlanPayload);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, planPath);
+  }
+
+  await recordAuditLog({
+    action: 'annual_plan_update',
+    targetSummary: summary,
+    actorEmail,
+    actorName,
+    actorRole,
+  });
 }

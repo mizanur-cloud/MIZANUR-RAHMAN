@@ -56,7 +56,8 @@ function createHeaderParagraphs(
   academicYear: string,
   title: string,
   subtitle?: string,
-  logoBytes?: Uint8Array | null
+  logoBytes?: Uint8Array | null,
+  metaLine?: string
 ): Paragraph[] {
   const logoParagraph = logoBytes
     ? [
@@ -109,7 +110,7 @@ function createHeaderParagraphs(
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 120 },
+      spacing: { after: metaLine ? 40 : 120 },
       children: [
         new TextRun({
           text: title,
@@ -131,6 +132,23 @@ function createHeaderParagraphs(
           : []),
       ],
     }),
+    ...(metaLine
+      ? [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 110 },
+            children: [
+              new TextRun({
+                text: metaLine,
+                bold: true,
+                size: 19,
+                color: BRAND_FOREST,
+                font: DOC_FONT_CONFIG,
+              }),
+            ],
+          }),
+        ]
+      : []),
   ];
 }
 
@@ -487,13 +505,16 @@ export async function exportCompleteSchoolDocx(state: AppState) {
       if (cIdx > 0 || sIdx > 0) {
         children.push(new Paragraph({ children: [new PageBreak()] }));
       }
+      const ct = sec.classTeacherId ? teacherMap.get(sec.classTeacherId) : undefined;
+      const metaLine = ct ? `Class Teacher: ${ct.name} (${ct.initials})` : undefined;
       children.push(
         ...createHeaderParagraphs(
           settings.schoolName,
           settings.academicYear,
           'MASTER CLASS TIMETABLE (GRID VIEW)',
           `${cls.name} — ${sec.name}${sec.roomNumber ? ` (${sec.roomNumber})` : ''}`,
-          logoBytes
+          logoBytes,
+          metaLine
         )
       );
 
@@ -536,13 +557,16 @@ export async function exportClassDocx(classId: string, state: AppState) {
     if (sIdx > 0) {
       children.push(new Paragraph({ children: [new PageBreak()] }));
     }
+    const ct = sec.classTeacherId ? teacherMap.get(sec.classTeacherId) : undefined;
+    const metaLine = ct ? `Class Teacher: ${ct.name} (${ct.initials})` : undefined;
     children.push(
       ...createHeaderParagraphs(
         settings.schoolName,
         settings.academicYear,
         `WEEKLY ROUTINE — ${cls.name.toUpperCase()}`,
         `${sec.name}${sec.roomNumber ? ` (${sec.roomNumber})` : ''}`,
-        logoBytes
+        logoBytes,
+        metaLine
       )
     );
 
@@ -578,6 +602,8 @@ export async function exportSectionDocx(classId: string, sectionId: string, stat
   const subjectMap = new Map(subjects.map(s => [s.id, s]));
   const teacherMap = new Map(teachers.map(t => [t.id, t]));
   const logoBytes = await loadSchoolLogoBytes();
+  const ct = sec.classTeacherId ? teacherMap.get(sec.classTeacherId) : undefined;
+  const metaLine = ct ? `Class Teacher: ${ct.name} (${ct.initials})` : undefined;
 
   const children: (Paragraph | Table)[] = [
     ...createHeaderParagraphs(
@@ -585,7 +611,8 @@ export async function exportSectionDocx(classId: string, sectionId: string, stat
       settings.academicYear,
       'WEEKLY CLASS TIMETABLE',
       `${cls.name} — ${sec.name}${sec.roomNumber ? ` (${sec.roomNumber})` : ''}`,
-      logoBytes
+      logoBytes,
+      metaLine
     ),
   ];
 

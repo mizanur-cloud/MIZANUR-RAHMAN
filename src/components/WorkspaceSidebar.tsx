@@ -14,6 +14,7 @@ import {
   Shield,
   Lock,
   Radio,
+  ClipboardList,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -26,6 +27,7 @@ interface WorkspaceSidebarProps {
   canEdit: boolean;
   isSuperAdmin: boolean;
   onOpenLiveDashboard: () => void;
+  onOpenAnnualPlan: () => void;
   onOpenClassMgmt: () => void;
   onOpenTeacherMgmt: () => void;
   onOpenSubjectMgmt: () => void;
@@ -45,6 +47,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   canEdit,
   isSuperAdmin,
   onOpenLiveDashboard,
+  onOpenAnnualPlan,
   onOpenClassMgmt,
   onOpenTeacherMgmt,
   onOpenSubjectMgmt,
@@ -71,8 +74,8 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   return (
     <aside className="no-print w-full lg:w-60 shrink-0 space-y-4">
       <div className="bg-white dark:bg-[#141a20] rounded-xl border border-stone-200 dark:border-slate-800 p-3 space-y-4">
-        {/* Live Campus Monitor Quick Shortcut */}
-        <div>
+        {/* Live Campus Monitor & Annual Plan Quick Shortcuts */}
+        <div className="space-y-1.5">
           <button
             type="button"
             onClick={onOpenLiveDashboard}
@@ -80,6 +83,15 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           >
             <Radio className="w-4 h-4 shrink-0" />
             <span className="truncate">লাইভ ক্লাস ড্যাশবোর্ড</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenAnnualPlan}
+            className="w-full px-2.5 py-2 text-xs font-bold text-stone-800 dark:text-slate-100 bg-[#f7f5f0] dark:bg-slate-800/70 hover:bg-[#eef5f2] dark:hover:bg-emerald-950/40 hover:text-[#145343] dark:hover:text-emerald-300 border border-stone-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-2.5 text-left whitespace-nowrap"
+          >
+            <ClipboardList className="w-4 h-4 text-[#145343] dark:text-emerald-400 shrink-0" />
+            <span className="truncate">বার্ষিক সিলেবাস ও প্ল্যান</span>
           </button>
         </div>
 
