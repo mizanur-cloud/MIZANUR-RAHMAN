@@ -869,14 +869,52 @@ export default function App() {
       prev => {
         const syncedTeachers = syncClassesToTeachers(updatedClasses, prev.teachers);
         const classLookup = new Map(updatedClasses.map(c => [c.id, c]));
-        const filteredEntries = prev.entries.filter(e => {
-          const cls = classLookup.get(e.classId);
-          if (!cls) return false;
-          if (!cls.sections.some(s => s.id === e.sectionId)) return false;
-          if (!isSubjectSelectedForSection(cls, e.sectionId, e.subjectId)) return false;
-          if (isSlotDismissed(cls, e.day, e.periodIndex, e.sectionId, prev.settings.workingDays)) return false;
-          return true;
+
+        // Track sections whose roomNumber changed so regular timetable entries stay synced
+        const roomChangeMap = new Map<string, { oldRoom: string; newRoom: string | undefined }>();
+        prev.classes.forEach(oldCls => {
+          const newCls = classLookup.get(oldCls.id);
+          if (!newCls) return;
+          oldCls.sections.forEach(oldSec => {
+            const newSec = newCls.sections.find(s => s.id === oldSec.id);
+            if (!newSec) return;
+            const oldR = (oldSec.roomNumber || '').trim();
+            const newR = (newSec.roomNumber || '').trim();
+            if (oldR !== newR) {
+              roomChangeMap.set(`${oldCls.id}__${oldSec.id}`, {
+                oldRoom: oldR,
+                newRoom: newR || undefined,
+              });
+            }
+          });
         });
+
+        const filteredEntries = prev.entries
+          .filter(e => {
+            const cls = classLookup.get(e.classId);
+            if (!cls) return false;
+            if (!cls.sections.some(s => s.id === e.sectionId)) return false;
+            if (!isSubjectSelectedForSection(cls, e.sectionId, e.subjectId)) return false;
+            if (isSlotDismissed(cls, e.day, e.periodIndex, e.sectionId, prev.settings.workingDays)) return false;
+            return true;
+          })
+          .map(e => {
+            const roomChange = roomChangeMap.get(`${e.classId}__${e.sectionId}`);
+            if (!roomChange) return e;
+            // Preserve dedicated special rooms (Hindu combined Room 307 / Agriculture Room / custom lab)
+            if (isHinduReligionSubject(e.subjectId, prev.subjects) && isHinduReligionRoom(e.room, prev.settings)) {
+              return e;
+            }
+            if (isAgricultureSubject(e.subjectId, prev.subjects) && e.room === AGRICULTURE_ROOM) {
+              return e;
+            }
+            const curRoom = (e.room || '').trim();
+            if (!curRoom || curRoom === roomChange.oldRoom) {
+              return { ...e, room: roomChange.newRoom };
+            }
+            return e;
+          });
+
         return {
           ...prev,
           classes: updatedClasses,
@@ -887,6 +925,49 @@ export default function App() {
       'শ্রেণি ও সেকশন কনফিগারেশন আপডেট হয়েছে।',
       'class_update',
       `শ্রেণি ও সেকশন কনফিগারেশন আপডেট (${updatedClasses.length}টি শ্রেণি)`
+    );
+  };
+
+  const handleUpdateSectionRoom = (classId: string, sectionId: string, roomNumber: string) => {
+    const cleanRoom = roomNumber.trim().slice(0, 40);
+    commitData(
+      prev => {
+        let oldRoom = '';
+        const updatedClasses = prev.classes.map(cls => {
+          if (cls.id !== classId) return cls;
+          return {
+            ...cls,
+            sections: cls.sections.map(sec => {
+              if (sec.id !== sectionId) return sec;
+              oldRoom = (sec.roomNumber || '').trim();
+              return { ...sec, roomNumber: cleanRoom || undefined };
+            }),
+          };
+        });
+        if (oldRoom === cleanRoom) return prev;
+        const nextEntries = prev.entries.map(e => {
+          if (e.classId !== classId || e.sectionId !== sectionId) return e;
+          if (isHinduReligionSubject(e.subjectId, prev.subjects) && isHinduReligionRoom(e.room, prev.settings)) {
+            return e;
+          }
+          if (isAgricultureSubject(e.subjectId, prev.subjects) && e.room === AGRICULTURE_ROOM) {
+            return e;
+          }
+          const curRoom = (e.room || '').trim();
+          if (!curRoom || curRoom === oldRoom) {
+            return { ...e, room: cleanRoom || undefined };
+          }
+          return e;
+        });
+        return {
+          ...prev,
+          classes: updatedClasses,
+          entries: nextEntries,
+        };
+      },
+      cleanRoom ? `রুম নম্বর "${cleanRoom}" সংরক্ষিত হয়েছে।` : 'সেকশন রুম নম্বর আপডেট হয়েছে।',
+      'class_update',
+      `সেকশন রুম নম্বর আপডেট (${classId}/${sectionId} → ${cleanRoom || 'Standard'})`
     );
   };
 
@@ -1736,7 +1817,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setIsLoginOpen(true)}
-                    className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5"
                   >
                     <LogIn className="w-3.5 h-3.5" />
                     <span>Super Admin লগইন</span>
@@ -1791,6 +1872,7 @@ export default function App() {
                   onOpenSubjectMgmt={() => canEdit && setIsSubjectMgmtOpen(true)}
                   onUpdateSectionSubjects={handleUpdateSectionSubjects}
                   onUpdateSectionSubjectConfig={handleUpdateSectionSubjectConfig}
+                  onUpdateSectionRoom={handleUpdateSectionRoom}
                   settings={data.settings}
                   fullAppState={data}
                   readOnly={!canEdit}
@@ -1968,7 +2050,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleUndo}
-              className="ml-1 px-2 py-1 rounded-md bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-blue-300 font-semibold flex items-center gap-1"
+              className="ml-1 px-2 py-1 rounded-md bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-amber-300 font-semibold flex items-center gap-1"
             >
               <Undo2 className="w-3 h-3" />
               <span>Undo</span>

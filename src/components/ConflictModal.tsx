@@ -95,7 +95,7 @@ export const ConflictModal: React.FC<ConflictModalProps> = ({
                     onResolveConflict(conf);
                     onClose();
                   }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 hover:text-blue-600 shrink-0 flex items-center gap-1.5 shadow-xs"
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 hover:text-[#145343] dark:hover:text-emerald-400 shrink-0 flex items-center gap-1.5 shadow-xs"
                 >
                   <span>Resolve</span>
                   <ArrowRight className="w-3 h-3" />

@@ -10,7 +10,7 @@ import {
   Teacher,
 } from '../types';
 import { INITIAL_SETTINGS } from '../data/initialData';
-import { X, Plus, Trash2, Check, BookOpen, Layers, Calendar, AlertTriangle, CheckSquare } from 'lucide-react';
+import { X, Plus, Trash2, Check, BookOpen, Layers, Calendar, AlertTriangle, CheckSquare, MapPin } from 'lucide-react';
 import { BENGALI_DAY_NAMES, getExtendedDayForSection, isSeventhPeriodDisabled } from '../services/scheduleTiers';
 import {
   getEffectiveSectionRequirements,
@@ -73,10 +73,17 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
 
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionRoom, setNewSectionRoom] = useState('');
+  const [roomDrafts, setRoomDrafts] = useState<Record<string, string>>({});
+  const [savedRoomKey, setSavedRoomKey] = useState<string | null>(null);
   const [sectionNotice, setSectionNotice] = useState('');
   const [extraSubjectId, setExtraSubjectId] = useState('');
   const [extraPeriods, setExtraPeriods] = useState(4);
   const teachingPeriods = periodTimings.filter(p => !p.isBreak && !p.isLocked);
+
+  useEffect(() => {
+    setRoomDrafts({});
+    setSavedRoomKey(null);
+  }, [activeClass?.id, isOpen]);
 
   if (!isOpen) return null;
 
@@ -135,6 +142,35 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
       return c;
     });
     onUpdateClasses(updated);
+  };
+
+  // Update room number for any section or shift (Play, Nursery, KG, Classes 1-10)
+  const handleSaveSectionRoom = (sectionId: string, rawRoom: string) => {
+    const cleanRoom = rawRoom.trim().slice(0, 40);
+    const targetSec = activeClass.sections.find(s => s.id === sectionId);
+    const prevRoom = (targetSec?.roomNumber || '').trim();
+    const key = `${activeClass.id}__${sectionId}`;
+    setRoomDrafts(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (prevRoom === cleanRoom) return;
+
+    const updated = classes.map(c => {
+      if (c.id !== activeClass.id) return c;
+      return {
+        ...c,
+        sections: c.sections.map(s =>
+          s.id === sectionId ? { ...s, roomNumber: cleanRoom || undefined } : s
+        ),
+      };
+    });
+    onUpdateClasses(updated);
+    setSavedRoomKey(key);
+    setTimeout(() => {
+      setSavedRoomKey(cur => (cur === key ? null : cur));
+    }, 2000);
   };
 
   // Update subject requirement periods/week
@@ -259,7 +295,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300 border border-[#bfd5cc] dark:border-emerald-800">
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
@@ -267,7 +303,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                 Class & Section Management (Play, Nursery, KG, Classes 1 — 10)
               </h2>
               <p className="text-xs text-slate-500">
-                Configure sections (up to 4 per class), subject allocations, and weekly period requirements.
+                সকল শ্রেণি ও শিফটের সেকশন, রুম নম্বর, বিষয় ও সাপ্তাহিক পিরিয়ড নির্ধারণ করুন।
               </p>
             </div>
           </div>
@@ -282,7 +318,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Left: Class List */}
-          <div className="w-full md:w-56 border-r border-slate-200 dark:border-slate-800 p-3 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/40 shrink-0">
+          <div className="w-full md:w-56 border-r border-slate-200 dark:border-slate-800 p-3 overflow-y-auto bg-[#f7f5f0]/60 dark:bg-slate-900/40 shrink-0">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 px-2">
               Select Class
             </div>
@@ -293,16 +329,16 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                   onClick={() => setSelectedClassId(c.id)}
                   className={`w-full px-3 py-2 text-xs font-semibold rounded-lg text-left transition-colors flex items-center justify-between ${
                     c.id === activeClass.id
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      ? 'bg-[#145343] text-white shadow-xs dark:bg-emerald-700'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-stone-200/70 dark:hover:bg-slate-800'
                   }`}
                 >
                   <span>{c.name}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                       c.id === activeClass.id
-                        ? 'bg-blue-700 text-blue-100'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        ? 'bg-[#0f3f33] text-emerald-100 dark:bg-emerald-800'
+                        : 'bg-stone-200 dark:bg-slate-700 text-stone-700 dark:text-slate-300'
                     }`}
                   >
                     {c.sections.length} sec
@@ -316,15 +352,15 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             {/* Block Teacher Setup (Specifically Play & Nursery with 2 Block Teachers & 2 Shifts) */}
             {(isPlayNur || activeClass.isJuniorClass) && (
-              <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 space-y-3">
+              <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-xs font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-wide flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-indigo-600" />
+                    <h3 className="text-xs font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wide flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                       <span>ব্লক টিচার সেটআপ (Play & Nursery — সকল বিষয়)</span>
                     </h3>
-                    <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                      প্লে ও নার্সারিতে কোনো আলাদা বিষয় থাকে না; ২ জন করে ব্লক টিচার মর্নিং ও ডে শিফটে সকল বিষয় পড়াবেন। ব্লক টিচারদের অন্য কোনো ক্লাসে বা প্রক্সি ক্লাসে দেওয়া যাবে না।
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                      প্লে ও নার্সারিতে কোনো আলাদা বিষয় থাকে না; ২ জন করে ব্লক টিচার মর্নিং ও ডে শিফটে সকল বিষয় পড়াবেন (একটানা ক্লাস সীমা মুক্ত)। ব্লক টিচারদের অন্য কোনো ক্লাসে বা প্রক্সি ক্লাসে দেওয়া যাবে না।
                     </p>
                   </div>
                   {!isPlayNur && (
@@ -350,14 +386,14 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                           });
                           onUpdateClasses(updated);
                         }}
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                        className="w-4 h-4 text-[#145343] rounded border-slate-300 focus:ring-[#145343]"
                       />
                     </label>
                   )}
                 </div>
 
                 {(isPlayNur || activeClass.isJuniorClass) && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-100 dark:border-indigo-900/40">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-amber-200/70 dark:border-amber-900/40">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         সর্বোচ্চ পিরিয়ড সংখ্যা (Max Periods)
@@ -456,14 +492,14 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
               };
 
               return (
-                <div className="p-4 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/70 dark:bg-purple-950/30 space-y-3">
+                <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <h3 className="text-sm font-bold text-purple-900 dark:text-purple-200 flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-purple-600" />
+                      <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                         <span>৭ম পিরিয়ড বণ্টন (Staggered 7th Period per Section)</span>
                       </h3>
-                      <p className="text-[11px] text-purple-700 dark:text-purple-300 mt-0.5">
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
                         প্রতিটি সেকশনের জন্য ৭ম পিরিয়ডের দিন নির্ধারণ করুন অথবা চাইলে নির্দিষ্ট সেকশন কিংবা সম্পূর্ণ শ্রেণির রুটিনে ৭ম পিরিয়ড বন্ধ (Off) রাখুন।
                       </p>
                     </div>
@@ -492,7 +528,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                           className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
                             isOff
                               ? 'bg-slate-100/80 dark:bg-slate-800/70 border-slate-300 dark:border-slate-700'
-                              : 'bg-white dark:bg-slate-800 border-purple-200 dark:border-purple-800'
+                              : 'bg-white dark:bg-slate-800 border-amber-200 dark:border-amber-800'
                           }`}
                         >
                           <div className="min-w-0">
@@ -503,7 +539,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                               className={`text-[10px] font-semibold ${
                                 isOff
                                   ? 'text-rose-600 dark:text-rose-400'
-                                  : 'text-purple-600 dark:text-purple-400'
+                                  : 'text-amber-700 dark:text-amber-400'
                               }`}
                             >
                               {isOff
@@ -546,7 +582,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                             className={`py-1 px-2 text-[11px] font-semibold border rounded-md ${
                               isOff
                                 ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-                                : 'bg-purple-50 dark:bg-slate-700 border-purple-300 dark:border-purple-600 text-purple-800 dark:text-purple-200'
+                                : 'bg-amber-50 dark:bg-slate-700 border-amber-300 dark:border-amber-600 text-amber-900 dark:text-amber-200'
                             }`}
                           >
                             <option value="__OFF__">৭ম পিরিয়ড বন্ধ (Off)</option>
@@ -683,15 +719,15 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-blue-600" />
+                    <Layers className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                     <span>
-                      {isPlayNur ? `Shifts for ${activeClass.name} (মর্নিং ও ডে শিফট)` : `Sections for ${activeClass.name}`}
+                      {isPlayNur ? `Shifts & Rooms for ${activeClass.name} (মর্নিং ও ডে শিফট)` : `Sections & Rooms for ${activeClass.name}`}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500">
                     {isPlayNur
-                      ? 'প্লে ও নার্সারির জন্য শুধুমাত্র দুটি শিফট রয়েছে: মর্নিং শিফট এবং ডে শিফট।'
-                      : 'Each class can have up to 4 sections by default (A, B, C, D).'}
+                      ? 'প্লে ও নার্সারির মর্নিং ও ডে শিফটের রুম নম্বর নিচের ইনপুটে লিখে এডিট ও সংরক্ষণ করুন।'
+                      : 'প্রতিটি সেকশনের রুম নম্বর সরাসরি পরিবর্তন করে সেভ করুন; রুটিনে স্বয়ংক্রিয়ভাবে আপডেট হবে।'}
                   </p>
                 </div>
               </div>
@@ -703,43 +739,89 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                 </div>
               )}
 
-              {/* Sections list */}
+              {/* Sections list with editable room number for ALL sections & shifts */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {activeClass.sections.map(sec => (
-                  <div
-                    key={sec.id}
-                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-xs text-slate-900 dark:text-white">
-                        {sec.name}
+                {activeClass.sections.map(sec => {
+                  const draftKey = `${activeClass.id}__${sec.id}`;
+                  const currentVal =
+                    draftKey in roomDrafts ? roomDrafts[draftKey] : sec.roomNumber || '';
+                  const isDirty = currentVal.trim() !== (sec.roomNumber || '').trim();
+                  const isJustSaved = savedRoomKey === draftKey;
+
+                  return (
+                    <div
+                      key={sec.id}
+                      className="p-3 rounded-xl border border-stone-200 dark:border-slate-800 bg-[#f7f5f0]/70 dark:bg-slate-800/40 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                          {sec.name}
+                        </div>
+                        {!isPlayNur && activeClass.sections.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSection(sec.id)}
+                            title="Delete section"
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
-                      <div className="text-[11px] text-slate-500">
-                        {sec.roomNumber || 'No room designated'}
+
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative flex-1">
+                          <MapPin className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            maxLength={40}
+                            aria-label={`${activeClass.name} ${sec.name} Room Number`}
+                            placeholder="রুম নং (যেমন: Room 101)"
+                            value={currentVal}
+                            onChange={e =>
+                              setRoomDrafts(prev => ({ ...prev, [draftKey]: e.target.value }))
+                            }
+                            onBlur={() => {
+                              if (isDirty) handleSaveSectionRoom(sec.id, currentVal);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveSectionRoom(sec.id, currentVal);
+                              }
+                            }}
+                            className="w-full pl-7 pr-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[#145343]"
+                          />
+                        </div>
+                        {isDirty ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSectionRoom(sec.id, currentVal)}
+                            className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg shrink-0"
+                          >
+                            সেভ
+                          </button>
+                        ) : isJustSaved ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>সেভ</span>
+                          </span>
+                        ) : null}
                       </div>
                     </div>
-                    {!isPlayNur && activeClass.sections.length > 1 && (
-                      <button
-                        onClick={() => handleRemoveSection(sec.id)}
-                        title="Delete section"
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Add Section Form (Hidden for Play/Nursery which strictly use Morning & Day Shifts) */}
               {!isPlayNur && activeClass.sections.length < 6 && (
-                <div className="p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                <div className="p-3 rounded-xl border border-dashed border-stone-300 dark:border-slate-700 flex flex-wrap sm:flex-nowrap items-center gap-2">
                   <input
                     type="text"
                     placeholder="Section Name (e.g. Section E)"
                     value={newSectionName}
                     onChange={e => setNewSectionName(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100"
+                    className="flex-1 min-w-[140px] px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100"
                   />
                   <input
                     type="text"
@@ -749,8 +831,9 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                     className="w-32 px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100"
                   />
                   <button
+                    type="button"
                     onClick={handleAddSection}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1 shrink-0"
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center gap-1 shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Section</span>
@@ -765,7 +848,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <CheckSquare className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                       <span>সেকশন-ভিত্তিক বিষয় নির্বাচন ({activeClass.name})</span>
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -805,14 +888,14 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                         onClick={() => setSelectedSectionId(sec.id)}
                         className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-2 ${
                           isSecSelected
-                            ? 'bg-blue-700 text-white border-blue-700'
+                            ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
                             : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                       >
                         <span>{sec.name}</span>
                         <span
                           className={`font-mono text-[10px] tabular-nums ${
-                            isSecSelected ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'
+                            isSecSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
                           }`}
                         >
                           {secReqs.length} subs · {totalSecPeriods}p
@@ -918,7 +1001,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                           key={req.subjectId}
                           className={`p-2.5 rounded-lg border space-y-2 transition-colors ${
                             isChecked
-                              ? 'bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800 text-slate-900 dark:text-white'
+                              ? 'bg-white dark:bg-slate-900 border-[#bfd5cc] dark:border-emerald-800 text-slate-900 dark:text-white'
                               : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
                           }`}
                         >
@@ -928,7 +1011,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                                 type="checkbox"
                                 checked={isChecked}
                                 onChange={() => handleToggleSectionSubject(req.subjectId)}
-                                className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 shrink-0"
+                                className="w-4 h-4 rounded text-[#145343] border-slate-300 focus:ring-[#145343] shrink-0"
                               />
                               <span
                                 className="w-2 h-2 rounded-full shrink-0"
@@ -1005,8 +1088,8 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                                       onClick={() => toggleSecFixed(tp.periodIndex)}
                                       className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border ${
                                         isPinned
-                                          ? 'bg-blue-700 text-white border-blue-700'
-                                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                          ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
+                                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500'
                                       }`}
                                     >
                                       P{tp.periodIndex}
@@ -1067,7 +1150,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                         type="button"
                         onClick={handleAddExtraSubjectToSection}
                         disabled={!extraSubjectId}
-                        className="px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg flex items-center gap-1"
+                        className="px-2.5 py-1 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 rounded-lg flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>সেকশনে যোগ</span>
@@ -1098,16 +1181,16 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
                       onClose();
                       onOpenSubjectMgmt();
                     }}
-                    className="px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 rounded-lg flex items-center gap-1.5 shrink-0 border border-blue-200 dark:border-blue-900"
+                    className="px-2.5 py-1 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] rounded-lg flex items-center gap-1.5 shrink-0 border border-[#bfd5cc] dark:border-emerald-800"
                   >
-                    <Layers className="w-3.5 h-3.5 text-blue-600" />
+                    <Layers className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                     <span>Manage Global Subjects / বিষয় যোগ বা পরিবর্তন</span>
                   </button>
                 )}
               </div>
 
               {isPlayNur ? (
-                <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 text-xs text-indigo-800 dark:text-indigo-200">
+                <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-900 dark:text-amber-200">
                   <strong>নোট:</strong> {activeClass.name} শ্রেণিতে <strong>"সকল বিষয় (ব্লক টিচার)"</strong> পদ্ধতিতে রুটিন পরিচালিত হয়। কোনো আলাদা সাবজেক্ট বরাদ্দের প্রয়োজন নেই।
                 </div>
               ) : (
@@ -1192,7 +1275,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
         <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+            className="px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg shadow-xs"
           >
             Done
           </button>

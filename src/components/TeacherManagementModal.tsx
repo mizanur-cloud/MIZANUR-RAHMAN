@@ -349,7 +349,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300 border border-[#bfd5cc] dark:border-emerald-800">
               <Users className="w-5 h-5" />
             </div>
             <div>
@@ -431,7 +431,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                       onClick={() => startEdit(t)}
                       className={`p-2.5 rounded-xl border cursor-pointer transition-all group relative ${
                         isSelected
-                          ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 shadow-xs'
+                          ? 'border-[#145343] bg-[#eef5f2]/80 dark:border-emerald-600 dark:bg-emerald-950/40 shadow-xs'
                           : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                       }`}
                     >
@@ -470,12 +470,12 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                       <div className="flex items-center justify-between gap-1 mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px]">
                         <div className="flex items-center gap-1 flex-wrap text-slate-500">
                           {t.isBlockTeacher && (
-                            <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded font-semibold">
+                            <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 rounded font-semibold">
                               ব্লক
                             </span>
                           )}
                           {t.isCoordinator && (
-                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded font-semibold">
+                            <span className="px-1.5 py-0.2 bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-300 rounded font-semibold">
                               কো-অর্ডিনেটর
                             </span>
                           )}
@@ -516,7 +516,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                               : wl.status === 'Near Limit'
                               ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
                               : wl.totalWeeklyLoad > 0
-                              ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
+                              ? 'bg-[#eef5f2] dark:bg-emerald-950/70 text-[#145343] dark:text-emerald-300'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                           }`}
                         >
@@ -602,15 +602,21 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                       Max Consecutive Classes (একটানা সর্বোচ্চ)
                     </label>
-                    <select
-                      value={Math.min(3, maxConsecutive)}
-                      onChange={e => setMaxConsecutive(Math.min(3, Number(e.target.value)))}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
-                    >
-                      <option value={1}>1 period max</option>
-                      <option value={2}>2 periods max (Recommended standard)</option>
-                      <option value={3}>3 periods max (Exceptional only)</option>
-                    </select>
+                    {isBlockTeacher ? (
+                      <div className="px-3 py-1.5 text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-900 dark:text-amber-200 font-medium">
+                        Play ও Nursery ব্লক শিক্ষকদের ক্ষেত্রে এই সীমা প্রযোজ্য নয়
+                      </div>
+                    ) : (
+                      <select
+                        value={Math.min(3, maxConsecutive)}
+                        onChange={e => setMaxConsecutive(Math.min(3, Number(e.target.value)))}
+                        className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-semibold"
+                      >
+                        <option value={1}>1 period max</option>
+                        <option value={2}>2 periods max (Recommended standard)</option>
+                        <option value={3}>3 periods max (Exceptional only)</option>
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -666,9 +672,9 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                 </div>
 
                 {/* Institutional Role & Proxy Policy Checkboxes */}
-                <div className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                <div className="p-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
                     <span>বিশেষ দায়িত্ব ও প্রক্সি নীতি (Role & Proxy Exemption)</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -681,11 +687,11 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                           setIsBlockTeacher(checked);
                           if (checked) setNoProxy(true);
                         }}
-                        className="mt-0.5 rounded text-indigo-600"
+                        className="mt-0.5 rounded text-[#145343]"
                       />
                       <div>
                         <div className="font-semibold text-slate-800 dark:text-slate-100">ব্লক টিচার (Play/Nursery)</div>
-                        <div className="text-[10px] text-slate-500">অন্য কোনো ক্লাস ও প্রক্সিতে নিষিদ্ধ</div>
+                        <div className="text-[10px] text-slate-500">অন্য কোনো ক্লাস ও প্রক্সিতে নিষিদ্ধ (একটানা সীমা মুক্ত)</div>
                       </div>
                     </label>
 
@@ -698,7 +704,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                           setIsCoordinator(checked);
                           if (checked) setNoProxy(true);
                         }}
-                        className="mt-0.5 rounded text-purple-600"
+                        className="mt-0.5 rounded text-[#145343]"
                       />
                       <div>
                         <div className="font-semibold text-slate-800 dark:text-slate-100">কো-অর্ডিনেটর (Coordinator)</div>
@@ -736,7 +742,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                           onClick={() => handleToggleSubject(sub.id)}
                           className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-colors ${
                             isChecked
-                              ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100 font-semibold'
+                              ? 'border-[#145343] bg-[#eef5f2]/80 dark:border-emerald-600 dark:bg-emerald-950/40 text-[#145343] dark:text-emerald-100 font-semibold'
                               : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                           }`}
                         >
@@ -747,7 +753,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                             />
                             <span className="truncate">{sub.name}</span>
                           </div>
-                          {isChecked && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                          {isChecked && <Check className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400 shrink-0" />}
                         </div>
                       );
                     })}
@@ -838,7 +844,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                     <button
                       type="button"
                       onClick={handleAddAssignment}
-                      className="w-full sm:w-auto px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                      className="w-full sm:w-auto px-3.5 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ এই ক্লাসে যুক্ত করুন</span>
@@ -860,17 +866,17 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({
                           return (
                             <div
                               key={aIdx}
-                              className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-lg text-xs flex items-center gap-1.5 text-blue-900 dark:text-blue-200"
+                              className="px-2.5 py-1 bg-[#eef5f2] dark:bg-emerald-950/60 border border-[#bfd5cc] dark:border-emerald-800 rounded-lg text-xs flex items-center gap-1.5 text-[#145343] dark:text-emerald-200"
                             >
-                              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                              <BookOpen className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                               <span className="font-bold">{cls?.name || assignment.classId}</span>
                               {sec ? (
-                                <span className="text-[11px] text-blue-700 dark:text-blue-300">({sec.name})</span>
+                                <span className="text-[11px] text-[#0f3f33] dark:text-emerald-300">({sec.name})</span>
                               ) : (
-                                <span className="text-[10px] text-blue-500 font-medium">(সব সেকশন)</span>
+                                <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">(সব সেকশন)</span>
                               )}
                               {sub && (
-                                <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
                                   : {sub.name}
                                 </span>
                               )}

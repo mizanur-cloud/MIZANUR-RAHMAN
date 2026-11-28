@@ -42,7 +42,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ onOpenHelp }
         <button
           onClick={() => setShowIOSGuide(true)}
           title="আইফোনে ইনস্টল করার নিয়ম"
-          className="px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
+          className="px-2.5 py-1.5 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/40 hover:bg-[#dcebe4] border border-[#bfd5cc] dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
         >
           <Smartphone className="w-3.5 h-3.5" />
           <span>iOS অ্যাপ</span>
@@ -52,7 +52,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ onOpenHelp }
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
             <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Smartphone className="w-5 h-5 text-blue-600" />
+                <Smartphone className="w-5 h-5 text-[#145343] dark:text-emerald-400" />
                 <span>আইফোনে অ্যাপ যুক্ত করার নিয়ম</span>
               </h3>
               <p className="mt-2.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -78,9 +78,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ onOpenHelp }
     <button
       onClick={onOpenHelp}
       title="মোবাইল অ্যাপ (APK) ও ব্যবহারের নিয়মাবলী"
-      className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
+      className="px-2.5 py-1.5 text-xs font-bold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/50 hover:bg-[#dcebe4] border border-[#bfd5cc] dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-2xs"
     >
-      <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+      <Smartphone className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
       <span>মোবাইল অ্যাপ (APK)</span>
     </button>
   );

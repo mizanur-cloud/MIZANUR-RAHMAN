@@ -192,7 +192,7 @@ export function getTierBadgeInfo(
     return {
       label: '৬ষ্ঠ পিরিয়ড পর্যন্ত (৪র্থ টিফিন)',
       details: '৬ষ্ঠ পিরিয়ড পর্যন্ত ক্লাস, ৪র্থ পিরিয়ড টিফিন বিরতি।',
-      color: 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300',
+      color: 'bg-teal-100 text-teal-800 dark:bg-teal-950/70 dark:text-teal-300',
     };
   }
 
@@ -215,7 +215,7 @@ export function getTierBadgeInfo(
     return {
       label: `৬ষ্ঠ পিরিয়ড + ${dayBn} ৭ম (${secLabel})`,
       details: `${secLabel}-এ ৬ষ্ঠ পিরিয়ড পর্যন্ত ক্লাস, তবে ${dayBn} ৭ম পিরিয়ড পর্যন্ত চলবে (৪র্থ পিরিয়ড টিফিন)।`,
-      color: 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300',
+      color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300',
       extendedDay: extDay,
       extendedDayBengali: dayBn,
     };

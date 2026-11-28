@@ -555,7 +555,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300">
               <UploadCloud className="w-5 h-5" />
             </div>
             <div>
@@ -588,7 +588,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                 </div>
 
                 <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-center">
-                  <ImageIcon className="w-5 h-5 text-purple-600 mx-auto mb-1" />
+                  <ImageIcon className="w-5 h-5 text-amber-600 mx-auto mb-1" />
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Picture / Photo</div>
                   <div className="text-[10px] text-slate-400">.jpg, .png, .webp</div>
                 </div>
@@ -600,21 +600,21 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                 </div>
 
                 <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-center">
-                  <FileText className="w-5 h-5 text-blue-600 mx-auto mb-1" />
+                  <FileText className="w-5 h-5 text-[#145343] dark:text-emerald-400 mx-auto mb-1" />
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Word Document</div>
                   <div className="text-[10px] text-slate-400">.docx, .txt</div>
                 </div>
               </div>
 
               {/* Auto-Save directly on upload banner */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#eef5f2]/80 dark:bg-emerald-950/30 border border-[#bfd5cc] dark:border-emerald-900/50">
                 <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-[#145343] dark:text-emerald-400 shrink-0" />
                   <div>
-                    <div className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                    <div className="text-xs font-bold text-[#145343] dark:text-emerald-200">
                       আপলোডের সাথে সাথে স্বয়ংক্রিয় সেভ (Auto-Save on Upload)
                     </div>
-                    <div className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
+                    <div className="text-[11px] text-[#145343]/80 dark:text-emerald-300/80">
                       ফাইল আপলোড হওয়া মাত্রই তথ্যগুলো সরাসরি সেভ হয়ে সিস্টেমে কার্যকর হয়ে যাবে।
                     </div>
                   </div>
@@ -626,12 +626,12 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                     onChange={e => setAutoSaveEnabled(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#145343]"></div>
                 </label>
               </div>
 
               {/* Upload Drag & Drop Box */}
-              <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/30">
+              <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-[#145343] dark:hover:border-emerald-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/30">
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.txt"
@@ -639,7 +639,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                   className="hidden"
                   disabled={isProcessing}
                 />
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 rounded-full flex items-center justify-center mb-3 shadow-xs">
+                <div className="w-12 h-12 bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-300 rounded-full flex items-center justify-center mb-3 shadow-xs">
                   {isProcessing ? (
                     <RefreshCw className="w-6 h-6 animate-spin" />
                   ) : (
@@ -710,7 +710,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                 </div>
                 <button
                   onClick={() => setActiveTab('upload')}
-                  className="text-xs text-blue-600 hover:underline font-semibold"
+                  className="text-xs text-[#145343] dark:text-emerald-400 hover:underline font-semibold"
                 >
                   Upload different file
                 </button>
@@ -734,7 +734,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
 
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="text-[10px] uppercase font-semibold text-slate-500">Routine Slots</div>
-                  <div className="text-lg font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                  <div className="text-lg font-bold text-[#145343] dark:text-emerald-400 tabular-nums">
                     {extractedData?.entries?.length || 0}
                   </div>
                 </div>
@@ -757,7 +757,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                       <tr key={idx} className="hover:bg-slate-50/50">
                         <td className="py-1.5 px-3 font-semibold">{e.day}</td>
                         <td className="py-1.5 px-3">Period {e.periodIndex}</td>
-                        <td className="py-1.5 px-3 text-blue-700 font-medium">
+                        <td className="py-1.5 px-3 text-[#145343] dark:text-emerald-400 font-medium">
                           {e.className} {e.sectionName ? `(${e.sectionName})` : ''}
                         </td>
                         <td className="py-1.5 px-3 font-semibold">{e.subjectName}</td>
@@ -779,7 +779,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                     onClick={() => setImportMode('merge')}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       importMode === 'merge'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 ring-1 ring-blue-500'
+                        ? 'border-[#145343] bg-[#eef5f2] dark:bg-emerald-950/60 text-[#145343] dark:text-emerald-100 ring-1 ring-[#145343]'
                         : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -794,7 +794,7 @@ export const SmartImportModal: React.FC<SmartImportModalProps> = ({
                     onClick={() => setImportMode('replace')}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       importMode === 'replace'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 ring-1 ring-blue-500'
+                        ? 'border-[#145343] bg-[#eef5f2] dark:bg-emerald-950/60 text-[#145343] dark:text-emerald-100 ring-1 ring-[#145343]'
                         : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                     }`}
                   >

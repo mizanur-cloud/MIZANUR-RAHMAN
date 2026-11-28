@@ -185,7 +185,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Total Classes Assigned
                   </div>
-                  <div className="text-lg font-mono font-bold text-blue-700 dark:text-blue-400 tabular-nums mt-0.5">
+                  <div className="text-lg font-mono font-bold text-[#145343] dark:text-emerald-400 tabular-nums mt-0.5">
                     {verification.totalClassesAssigned}
                   </div>
                 </div>
@@ -450,7 +450,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                         setGenerationResult(null);
                         onOpenAudit();
                       }}
-                      className="px-3.5 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-1.5"
+                      className="px-3.5 py-2 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] border border-[#bfd5cc] dark:border-emerald-800 rounded-lg flex items-center gap-1.5"
                     >
                       <span>Inspect Full Audit</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -462,7 +462,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                       setGenerationResult(null);
                       onClose();
                     }}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors shadow-xs"
+                    className="px-4 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors shadow-xs"
                   >
                     View Updated Routines
                   </button>
@@ -483,7 +483,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                     onClick={() => setScope('all')}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       scope === 'all'
-                        ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 ring-1 ring-blue-500'
+                        ? 'border-[#145343] bg-[#eef5f2]/80 dark:bg-emerald-950/40 text-[#145343] dark:text-emerald-200 ring-1 ring-[#145343]'
                         : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -496,7 +496,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                     onClick={() => setScope('class')}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       scope === 'class'
-                        ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 ring-1 ring-blue-500'
+                        ? 'border-[#145343] bg-[#eef5f2]/80 dark:bg-emerald-950/40 text-[#145343] dark:text-emerald-200 ring-1 ring-[#145343]'
                         : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -509,7 +509,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                     onClick={() => setScope('section')}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       scope === 'section'
-                        ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 ring-1 ring-blue-500'
+                        ? 'border-[#145343] bg-[#eef5f2]/80 dark:bg-emerald-950/40 text-[#145343] dark:text-emerald-200 ring-1 ring-[#145343]'
                         : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -572,7 +572,7 @@ export const AutoGenerateModal: React.FC<AutoGenerateModalProps> = ({
                     type="checkbox"
                     checked={preserveLocked}
                     onChange={e => setPreserveLocked(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded text-[#145343] focus:ring-[#145343]"
                   />
                 </div>
               </div>

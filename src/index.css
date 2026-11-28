@@ -45,8 +45,8 @@
     --surface-subtle: #efeae1;
     --border-hairline: #e4e0d5;
     --brand-primary: #145343;
-    --brand-secondary: #1b2a4a;
-    --brand-gold: #a16207;
+    --brand-secondary: #111827;
+    --brand-gold: #c89226;
   }
 
   .dark {
@@ -55,8 +55,8 @@
     --surface-subtle: #1e2631;
     --border-hairline: #27313f;
     --brand-primary: #2a7f68;
-    --brand-secondary: #93c5fd;
-    --brand-gold: #d97706;
+    --brand-secondary: #6ee7b7;
+    --brand-gold: #e0a938;
   }
 
   html,

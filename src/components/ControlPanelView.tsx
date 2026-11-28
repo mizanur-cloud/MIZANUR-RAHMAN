@@ -204,7 +204,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                 <h1 className="text-lg font-bold text-slate-900 dark:text-white">
                   Super Admin কন্ট্রোল প্যানেল
                 </h1>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                   Root Security
                 </span>
               </div>
@@ -221,7 +221,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
               onClick={() => setSubTab('admins')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
                 subTab === 'admins'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#145343] dark:text-emerald-300 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -233,7 +233,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
               onClick={() => setSubTab('logs')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
                 subTab === 'logs'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#145343] dark:text-emerald-300 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -277,7 +277,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
           {/* Add New Admin Form */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 h-fit">
             <div className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <UserPlus className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">
                 নতুন Admin যুক্ত করুন
               </h2>
@@ -307,7 +307,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                     placeholder="যেমন: মো. হাসান আলী"
-                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                   />
                 </div>
               </div>
@@ -325,7 +325,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                     value={newEmail}
                     onChange={e => setNewEmail(e.target.value)}
                     placeholder="teacher.admin@gmail.com"
-                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                   />
                 </div>
               </div>
@@ -342,7 +342,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                     value={newDesignation}
                     onChange={e => setNewDesignation(e.target.value)}
                     placeholder="যেমন: Routine Coordinator"
-                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                   />
                 </div>
               </div>
@@ -354,7 +354,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                 <select
                   value={newInitialStatus}
                   onChange={e => setNewInitialStatus(e.target.value as AdminStatus)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                 >
                   <option value="active">Active (তাৎক্ষণিক অনুমোদন)</option>
                   <option value="paused">Paused (অস্থায়ীভাবে স্থগিত)</option>
@@ -390,7 +390,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                   value={adminSearch}
                   onChange={e => setAdminSearch(e.target.value)}
                   placeholder="নাম বা ইমেইল খুঁজুন..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                 />
               </div>
             </div>
@@ -529,7 +529,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-600" />
+                <Clock className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                 <span>অডিট ও অ্যাক্টিভিটি লগ (সর্বশেষ ১০০টি পরিবর্তন)</span>
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -540,7 +540,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
               <select
                 value={logCategory}
                 onChange={e => setLogCategory(e.target.value as 'all' | 'security' | 'proxy' | 'routine')}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
               >
                 <option value="all">সব অ্যাক্টিভিটি</option>
                 <option value="security">সিকিউরিটি ও এডমিন</option>
@@ -554,7 +554,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                   value={logSearch}
                   onChange={e => setLogSearch(e.target.value)}
                   placeholder="ইউজার বা কাজের বিবরণ খুঁজুন..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                 />
               </div>
             </div>
@@ -589,7 +589,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${
                             log.actorRole === 'super_admin'
-                              ? 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
+                              ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
                               : 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800'
                           }`}
                         >
@@ -637,7 +637,7 @@ export const ControlPanelView: React.FC<ControlPanelViewProps> = ({
                 value={reasonText}
                 onChange={e => setReasonText(e.target.value)}
                 placeholder="যেমন: রুটিন অনুমোদন শেষ / নিরাপত্তা যাচাই চলছে"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
               />
             </div>
             <div className="flex items-center justify-end gap-2">

@@ -554,7 +554,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Total Classes Assigned
             </div>
-            <div className="text-lg font-mono font-bold text-blue-700 dark:text-blue-400 tabular-nums mt-0.5">
+            <div className="text-lg font-mono font-bold text-[#145343] dark:text-emerald-400 tabular-nums mt-0.5">
               {verification.totalClassesAssigned}
             </div>
           </div>
@@ -779,7 +779,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                         <button
                           type="button"
                           onClick={() => onSelectClassSection(item.classId, item.sectionId)}
-                          className="text-blue-700 dark:text-blue-400 hover:underline font-semibold inline-flex items-center gap-1"
+                          className="text-[#145343] dark:text-emerald-400 hover:underline font-semibold inline-flex items-center gap-1"
                         >
                           <span>Open</span>
                           <ArrowRight className="w-3 h-3" />
@@ -859,12 +859,12 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-white">
                         {row.scheduledCount}
                         {row.sectionCoverage > row.scheduledCount && (
-                          <span className="block text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                          <span className="block text-[10px] font-normal text-amber-700 dark:text-amber-400">
                             ({row.sectionCoverage} sec)
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-blue-700 dark:text-blue-400">
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
                         {wl.proxyWeeklyPeriods}
                       </td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold">
@@ -923,7 +923,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                         <button
                           type="button"
                           onClick={() => onSelectTeacher(row.teacher.id)}
-                          className="text-blue-700 dark:text-blue-400 hover:underline font-semibold inline-flex items-center gap-1"
+                          className="text-[#145343] dark:text-emerald-400 hover:underline font-semibold inline-flex items-center gap-1"
                         >
                           <span>View</span>
                           <ArrowRight className="w-3 h-3" />
@@ -1024,7 +1024,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                       <button
                         type="button"
                         onClick={() => onSelectTeacher(diag.teacher.id)}
-                        className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline shrink-0 inline-flex items-center gap-1"
+                        className="text-[11px] font-semibold text-[#145343] dark:text-emerald-400 hover:underline shrink-0 inline-flex items-center gap-1"
                       >
                         <span>রুটিন দেখুন</span>
                         <ArrowRight className="w-3 h-3" />
@@ -1136,7 +1136,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                       <button
                         type="button"
                         onClick={() => onSelectTeacher(conf.teacherId!)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 flex items-center gap-1"
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#eef5f2] dark:bg-emerald-950/50 text-[#145343] dark:text-emerald-300 hover:bg-[#dcebe4] dark:hover:bg-emerald-900/50 flex items-center gap-1"
                       >
                         <span>Open Teacher Routine</span>
                         <ArrowRight className="w-3 h-3" />
@@ -1149,7 +1149,7 @@ export const ComplianceAuditPanel: React.FC<ComplianceAuditPanelProps> = React.m
                             onSelectClassSection(conf.classId, conf.sectionId);
                           }
                         }}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 flex items-center gap-1"
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#eef5f2] dark:bg-emerald-950/50 text-[#145343] dark:text-emerald-300 hover:bg-[#dcebe4] dark:hover:bg-emerald-900/50 flex items-center gap-1"
                       >
                         <span>Open Class Routine</span>
                         <ArrowRight className="w-3 h-3" />

@@ -1,10 +1,12 @@
 import {
   DayOfWeek,
   ProxyLogEntry,
+  SchoolClass,
   SchoolSettings,
   Teacher,
   TimetableEntry,
 } from '../types';
+import { isTeacherBlockTeacher } from './parallelSubjects';
 
 export type WorkloadStatus = 'Normal' | 'Near Limit' | 'Overloaded';
 
@@ -453,6 +455,8 @@ export function evaluateAssignmentLimits(params: {
   ignoreEntryId?: string;
   ignoreProxyLogId?: string;
   settings?: SchoolSettings;
+  classes?: SchoolClass[];
+  isBlockTeacher?: boolean;
 }): AssignmentLimitEvaluation {
   const {
     mode,
@@ -466,7 +470,10 @@ export function evaluateAssignmentLimits(params: {
     ignoreEntryId,
     ignoreProxyLogId,
     settings,
+    classes,
+    isBlockTeacher = false,
   } = params;
+  const exemptFromConsecutive = Boolean(isBlockTeacher || isTeacherBlockTeacher(teacher, classes));
 
   const filteredEntries = ignoreEntryId
     ? entries.filter(e => e.id !== ignoreEntryId)
@@ -593,7 +600,7 @@ export function evaluateAssignmentLimits(params: {
     });
   }
 
-  if (projectedConsecutive > summary.consecutiveMax) {
+  if (!exemptFromConsecutive && projectedConsecutive > summary.consecutiveMax) {
     hasOverloadWarning = true;
     warnings.push({
       code: 'consecutive_exceeded',

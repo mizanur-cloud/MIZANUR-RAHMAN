@@ -28,6 +28,8 @@ import {
   ChevronDown,
   SlidersHorizontal,
   Clock,
+  MapPin,
+  Check,
 } from 'lucide-react';
 import { useViewMode } from '../context/ViewModeContext';
 import { BENGALI_DAY_NAMES, isSlotDismissed, getTierBadgeInfo } from '../services/scheduleTiers';
@@ -85,6 +87,7 @@ interface ClassRoutineViewProps {
     subjectId: string,
     patch: { periodsPerWeek?: number; assignedTeacherId?: string; fixedPeriodIndices?: number[] }
   ) => void;
+  onUpdateSectionRoom?: (classId: string, sectionId: string, roomNumber: string) => void;
   settings?: SchoolSettings;
   fullAppState: AppState;
   readOnly?: boolean;
@@ -111,6 +114,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   onOpenSubjectMgmt,
   onUpdateSectionSubjects,
   onUpdateSectionSubjectConfig,
+  onUpdateSectionRoom,
   settings,
   fullAppState,
   readOnly = false,
@@ -128,6 +132,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   const [swapError, setSwapError] = useState<string | null>(null);
   const [showSectionSubjectPicker, setShowSectionSubjectPicker] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [isEditingRoom, setIsEditingRoom] = useState(false);
+  const [roomDraft, setRoomDraft] = useState('');
   const { isMobileView } = useViewMode();
   const [mobileFormat, setMobileFormat] = useState<'cards' | 'grid'>('cards');
   const [mobileDay, setMobileDay] = useState<DayOfWeek>(() => {
@@ -137,6 +143,17 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
   });
   const [now, setNow] = useState<Date>(() => new Date());
   const touchStartXRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setIsEditingRoom(false);
+    setRoomDraft(selectedSection?.roomNumber || '');
+  }, [selectedClass?.id, selectedSection?.id, selectedSection?.roomNumber]);
+
+  const commitRoomEdit = () => {
+    if (!selectedClass || !selectedSection || !onUpdateSectionRoom) return;
+    onUpdateSectionRoom(selectedClass.id, selectedSection.id, roomDraft.trim());
+    setIsEditingRoom(false);
+  };
 
   useEffect(() => {
     if (!isMobileView) return;
@@ -385,16 +402,70 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
           </div>
 
           {/* Compact Summary Strip + Tools Toggle */}
-          <div className="pt-2 border-t border-stone-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
-            <div className="min-w-0 text-[11px] text-stone-500 dark:text-slate-400 truncate">
-              <span className="font-semibold text-stone-800 dark:text-slate-200">
-                রুম {selectedSection?.roomNumber || 'Standard'}
+          <div className="pt-2 border-t border-stone-100 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+            <div className="min-w-0 text-[11px] text-stone-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+              {!readOnly && onUpdateSectionRoom && isEditingRoom ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={roomDraft}
+                    onChange={e => setRoomDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitRoomEdit();
+                      if (e.key === 'Escape') {
+                        setRoomDraft(selectedSection?.roomNumber || '');
+                        setIsEditingRoom(false);
+                      }
+                    }}
+                    placeholder="রুম নং"
+                    className="w-24 px-2 py-0.5 text-[11px] font-semibold bg-white dark:bg-slate-800 border border-[#145343] dark:border-emerald-600 rounded text-stone-900 dark:text-white focus:outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={commitRoomEdit}
+                    className="p-1 rounded bg-[#145343] text-white"
+                    title="রুম সংরক্ষণ"
+                  >
+                    <Check className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRoomDraft(selectedSection?.roomNumber || '');
+                      setIsEditingRoom(false);
+                    }}
+                    className="p-1 rounded bg-stone-200 dark:bg-slate-700 text-stone-700 dark:text-slate-200"
+                    title="বাতিল"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-semibold text-stone-800 dark:text-slate-200">
+                  <span>রুম {selectedSection?.roomNumber || 'Standard'}</span>
+                  {!readOnly && onUpdateSectionRoom && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomDraft(selectedSection?.roomNumber || '');
+                        setIsEditingRoom(true);
+                      }}
+                      className="p-0.5 text-[#145343] dark:text-emerald-400 hover:bg-[#eef5f2] dark:hover:bg-emerald-950/50 rounded"
+                      title="রুম নম্বর এডিট করুন"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              )}
+              <span>·</span>
+              <span>
+                <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
+                  {totalAssignedPeriods}/{totalRequiredPeriods}
+                </span>{' '}
+                পিরিয়ড
               </span>
-              <span> · </span>
-              <span className="font-mono tabular-nums font-semibold text-[#145343] dark:text-emerald-400">
-                {totalAssignedPeriods}/{totalRequiredPeriods}
-              </span>
-              <span> পিরিয়ড</span>
             </div>
 
             <button
@@ -426,8 +497,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                     }}
                     className={`min-h-[40px] px-3 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center justify-center gap-1.5 ${
                       isSwapMode
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800'
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
                     }`}
                   >
                     <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -636,8 +707,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                       title="দুটি পিরিয়ড নিরাপদভাবে অদলবদল করুন (ক্ল্যাশ চেকসহ)"
                       className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 ${
                         isSwapMode
-                          ? 'bg-indigo-600 text-white border-indigo-600'
-                          : 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50'
                       }`}
                     >
                       <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -747,7 +818,63 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                   {selectedClass?.name} · {selectedSection?.name}
                 </span>
                 <span>·</span>
-                <span>Room: {selectedSection?.roomNumber || 'Standard Classroom'}</span>
+                {!readOnly && onUpdateSectionRoom && isEditingRoom ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
+                    <input
+                      type="text"
+                      value={roomDraft}
+                      onChange={e => setRoomDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') commitRoomEdit();
+                        if (e.key === 'Escape') {
+                          setRoomDraft(selectedSection?.roomNumber || '');
+                          setIsEditingRoom(false);
+                        }
+                      }}
+                      placeholder="রুম নম্বর লিখুন..."
+                      className="w-28 px-2 py-0.5 text-xs font-semibold bg-white dark:bg-slate-800 border border-[#145343] dark:border-emerald-600 rounded text-slate-900 dark:text-white focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={commitRoomEdit}
+                      className="px-2 py-0.5 text-[11px] font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 rounded flex items-center gap-1"
+                      title="রুম নম্বর সংরক্ষণ করুন"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Save</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomDraft(selectedSection?.roomNumber || '');
+                        setIsEditingRoom(false);
+                      }}
+                      className="px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>Room: <strong className="text-slate-800 dark:text-slate-200">{selectedSection?.roomNumber || 'Standard Classroom'}</strong></span>
+                    {!readOnly && onUpdateSectionRoom && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomDraft(selectedSection?.roomNumber || '');
+                          setIsEditingRoom(true);
+                        }}
+                        className="px-1.5 py-0.5 text-[11px] font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] border border-[#bfd5cc] dark:border-emerald-800 rounded flex items-center gap-1 transition-colors"
+                        title="এই শাখা/শিফটের রুম নম্বর পরিবর্তন করুন"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Edit Room</span>
+                      </button>
+                    )}
+                  </span>
+                )}
                 {selectedClass && (
                   <>
                     <span>·</span>
@@ -785,9 +912,9 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
 
       {/* Interactive Swap Mode Guide / Validation Banner */}
       {isSwapMode && (
-        <div className="no-print bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 text-indigo-900 dark:text-indigo-200">
-            <ArrowLeftRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+        <div className="no-print bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200">
+            <ArrowLeftRight className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>
               {swapSource ? (
                 <>
@@ -807,7 +934,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
               setSwapSource(null);
               setSwapError(null);
             }}
-            className="text-indigo-700 dark:text-indigo-300 font-semibold hover:underline flex items-center gap-1 shrink-0"
+            className="text-amber-800 dark:text-amber-300 font-semibold hover:underline flex items-center gap-1 shrink-0"
           >
             <X className="w-3.5 h-3.5" />
             <span>বন্ধ করুন</span>
@@ -1076,7 +1203,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                     readOnly ? '' : 'cursor-pointer active:bg-stone-50 dark:active:bg-slate-800/60'
                   } ${
                     isSelectedSwap
-                      ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-inset ring-indigo-500'
+                      ? 'bg-amber-50 dark:bg-amber-950/40 ring-2 ring-inset ring-amber-500'
                       : isLivePeriod
                       ? 'bg-[#eef5f2]/65 dark:bg-emerald-950/30'
                       : ''
@@ -1266,19 +1393,19 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                   readOnly ? 'cursor-default' : 'cursor-pointer'
                                 } ${
                                   isSelectedSwapSource
-                                    ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-500'
+                                    ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 ring-2 ring-amber-500'
                                     : hasConflict
                                     ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-1 ring-amber-400'
                                     : isSwapMode
-                                    ? 'bg-white dark:bg-slate-800/80 border-indigo-200 dark:border-indigo-800 hover:border-indigo-500'
-                                    : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-blue-400'
+                                    ? 'bg-white dark:bg-slate-800/80 border-amber-200 dark:border-amber-800 hover:border-amber-500'
+                                    : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-[#145343] dark:hover:border-emerald-500'
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-1">
                                   <div className="font-bold text-[11px] text-slate-900 dark:text-slate-100 truncate flex items-center gap-1.5">
                                     <span
                                       className="w-2 h-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: subject?.color || '#3B82F6' }}
+                                      style={{ backgroundColor: subject?.color || '#145343' }}
                                     />
                                     <span className="truncate">{subject?.name || 'Class'}</span>
                                   </div>
@@ -1315,8 +1442,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                               readOnly ? 'cursor-default' : 'cursor-pointer'
                             } ${
                               isSelectedSwapSource
-                                ? 'bg-indigo-100 dark:bg-indigo-950 border-indigo-500 ring-2 ring-indigo-500'
-                                : 'border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/40 dark:bg-indigo-950/30 hover:border-blue-400'
+                                ? 'bg-amber-100 dark:bg-amber-950 border-amber-500 ring-2 ring-amber-500'
+                                : 'border-[#bfd5cc] dark:border-emerald-800/80 bg-[#eef5f2]/60 dark:bg-emerald-950/30 hover:border-[#145343]'
                             }`}
                             title="সমান্তরাল (Parallel) ক্লাস — একই পিরিয়ডে চলমান"
                           >
@@ -1336,7 +1463,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                   <div className="flex items-center gap-1 min-w-0">
                                     <span
                                       className="w-1.5 h-1.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: subject?.color || '#3B82F6' }}
+                                      style={{ backgroundColor: subject?.color || '#145343' }}
                                     />
                                     <span className="font-bold truncate">
                                       {subject?.code || subject?.name}
@@ -1372,10 +1499,10 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                             onClick={() => handleSlotClick(day, period.periodIndex)}
                             className={`w-full h-14 rounded-lg border border-dashed transition-all flex flex-col items-center justify-center gap-0.5 text-xs ${
                               isSelectedSwapSource
-                                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 ring-2 ring-indigo-500'
+                                ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/50 text-amber-700 ring-2 ring-amber-500'
                                 : isSwapMode
-                                ? 'border-indigo-300 dark:border-indigo-800 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 text-indigo-500'
-                                : 'border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-slate-400 hover:text-blue-600'
+                                ? 'border-amber-300 dark:border-amber-800 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 text-amber-600'
+                                : 'border-slate-200 dark:border-slate-800 hover:border-[#145343] dark:hover:border-emerald-500 hover:bg-[#eef5f2]/60 dark:hover:bg-emerald-950/20 text-slate-400 hover:text-[#145343] dark:hover:text-emerald-400'
                             }`}
                           >
                             {isSwapMode ? (
@@ -1405,7 +1532,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Subject Allocation for {selectedClass?.name} · {selectedSection?.name}
             {!isPlayNur && selectedSection?.selectedSubjectIds !== undefined && (
-              <span className="ml-2 text-blue-600 dark:text-blue-400 normal-case font-medium">
+              <span className="ml-2 text-[#145343] dark:text-emerald-400 normal-case font-medium">
                 (সেকশন-নির্বাচিত: {effectiveReqs.length} বিষয়)
               </span>
             )}
@@ -1418,7 +1545,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                   onClick={() => setShowSectionSubjectPicker(prev => !prev)}
                   className={`text-xs font-semibold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors ${
                     showSectionSubjectPicker
-                      ? 'bg-blue-700 text-white border-blue-700'
+                      ? 'bg-[#145343] text-white border-[#145343]'
                       : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
                   }`}
                 >
@@ -1430,10 +1557,10 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenSubjectMgmt}
-                  className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="text-xs font-semibold text-[#145343] dark:text-emerald-300 hover:text-[#0f3f33] bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] border border-[#bfd5cc] dark:border-emerald-900 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors"
                   title="Add new subjects or change subjects for this class"
                 >
-                  <Edit className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <Edit className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                   <span>Edit / Add Subjects</span>
                 </button>
               )}
@@ -1443,7 +1570,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
 
         {/* Inline Section-wise Subject Selection Drawer */}
         {!readOnly && !isPlayNur && showSectionSubjectPicker && selectedClass && selectedSection && onUpdateSectionSubjects && (
-          <div className="no-print mb-4 p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20 space-y-3">
+          <div className="no-print mb-4 p-3.5 rounded-xl border border-[#bfd5cc] dark:border-emerald-900 bg-[#eef5f2]/60 dark:bg-emerald-950/20 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="text-xs text-slate-800 dark:text-slate-200">
                 <strong>{selectedClass.name} · {selectedSection.name}</strong>-এর জন্য বিষয় নির্বাচন করুন — শুধুমাত্র টিক দেওয়া বিষয়গুলোই এই সেকশনের রুটিনে বসবে:
@@ -1487,7 +1614,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                     key={req.subjectId}
                     className={`p-2.5 rounded-lg border text-xs space-y-2 transition-colors ${
                       isSelected
-                        ? 'bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800 text-slate-900 dark:text-white'
+                        ? 'bg-white dark:bg-slate-900 border-[#bfd5cc] dark:border-emerald-800 text-slate-900 dark:text-white'
                         : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500'
                     }`}
                   >
@@ -1497,7 +1624,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSubjectForActiveSection(req.subjectId)}
-                          className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 focus:ring-blue-500 shrink-0"
+                          className="w-3.5 h-3.5 rounded text-[#145343] border-slate-300 focus:ring-[#145343] shrink-0"
                         />
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
@@ -1619,8 +1746,8 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                                       onClick={() => toggleFixed(tp.periodIndex)}
                                       className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border ${
                                         isPinned
-                                          ? 'bg-blue-700 text-white border-blue-700'
-                                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                          ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
+                                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500'
                                       }`}
                                     >
                                       P{tp.periodIndex}
@@ -1646,11 +1773,11 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
         )}
 
         {isPlayNur ? (
-          <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="text-xs text-indigo-900 dark:text-indigo-200">
+          <div className="p-4 rounded-xl border border-[#bfd5cc] dark:border-emerald-900 bg-[#eef5f2]/60 dark:bg-emerald-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-[#145343] dark:text-emerald-200">
               <div className="font-bold">ব্লক টিচার মডেল (সকল বিষয়) — {selectedClass?.name}</div>
-              <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                এই শ্রেণিতে কোনো আলাদা সাবজেক্ট নেই; নির্ধারিত ২ জন ব্লক টিচার মর্নিং ও ডে শিফটে সকল বিষয় পড়ান (অন্য কোনো ক্লাস বা প্রক্সি ক্লাসে যুক্ত নন)।
+              <p className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-0.5">
+                এই শ্রেণিতে কোনো আলাদা সাবজেক্ট নেই; নির্ধারিত ২ জন ব্লক টিচার মর্নিং ও ডে শিফটে সকল বিষয় পড়ান (অন্য কোনো ক্লাস বা প্রক্সি ক্লাসে যুক্ত নন এবং একটানা ক্লাসের সীমা মুক্ত)।
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1660,7 +1787,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                 return (
                   <span
                     key={bId}
-                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold text-indigo-900 dark:text-indigo-100"
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-[#bfd5cc] dark:border-emerald-800 text-xs font-semibold text-[#145343] dark:text-emerald-100"
                   >
                     ব্লক শিক্ষক {idx + 1}: {t.name} ({t.initials})
                   </span>
@@ -1701,7 +1828,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                     <div className="flex items-center gap-1.5">
                       <span
                         className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: subject?.color || '#3B82F6' }}
+                        style={{ backgroundColor: subject?.color || '#145343' }}
                       />
                       <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
                         {subject?.name}
@@ -1711,7 +1838,7 @@ export const ClassRoutineView: React.FC<ClassRoutineViewProps> = ({
                       {teacher?.name || 'Any qualified teacher'}
                     </div>
                     {effectiveFixed && effectiveFixed.length > 0 && (
-                      <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 mt-0.5">
+                      <div className="text-[10px] font-semibold text-[#145343] dark:text-emerald-400 mt-0.5">
                         নির্দিষ্ট পিরিয়ড: {effectiveFixed.map(p => `P${p}`).join(', ')}
                       </div>
                     )}

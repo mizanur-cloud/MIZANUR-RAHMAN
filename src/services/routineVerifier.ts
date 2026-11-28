@@ -521,7 +521,7 @@ export function verifyRoutine(
       workingDaysExceeded: !isBlockTch && pattern.workingDaysExceeded,
       workingDaysMathematicallyImpossible: !isBlockTch && pattern.mathematicallyImpossibleWorkingDays,
       threeConsecDaysCount: isBlockTch ? 0 : pattern.threeConsecDays.length,
-      fourPlusConsecDaysCount: pattern.fourPlusConsecDays.length,
+      fourPlusConsecDaysCount: isBlockTch ? 0 : pattern.fourPlusConsecDays.length,
       unbalancedDays: !isBlockTch && pattern.unbalancedDays,
     };
   });

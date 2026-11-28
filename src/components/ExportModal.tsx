@@ -284,7 +284,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300">
               <Download className="w-5 h-5" />
             </div>
             <div>
@@ -333,20 +333,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => setActiveCategory('section')}
                   className={`w-full p-2.5 rounded-xl text-left transition-all border flex items-start gap-2.5 ${
                     activeCategory === 'section'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-[#145343] text-white border-[#145343] shadow-xs'
                       : 'bg-white dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <Layers
                     className={`w-4 h-4 mt-0.5 shrink-0 ${
-                      activeCategory === 'section' ? 'text-white' : 'text-blue-600 dark:text-blue-400'
+                      activeCategory === 'section' ? 'text-white' : 'text-[#145343] dark:text-emerald-400'
                     }`}
                   />
                   <div>
                     <div className="text-xs font-bold leading-tight">Individual Section Routine</div>
                     <div
                       className={`text-[10px] mt-0.5 ${
-                        activeCategory === 'section' ? 'text-blue-100' : 'text-slate-500'
+                        activeCategory === 'section' || activeCategory === 'class' || activeCategory === 'teacher' || activeCategory === 'complete_school' || activeCategory === 'all_teachers' ? 'text-emerald-100' : 'text-slate-500'
                       }`}
                     >
                       Single class & section timetable with room number
@@ -360,20 +360,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => setActiveCategory('class')}
                   className={`w-full p-2.5 rounded-xl text-left transition-all border flex items-start gap-2.5 ${
                     activeCategory === 'class'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-[#145343] text-white border-[#145343] shadow-xs'
                       : 'bg-white dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <BookOpen
                     className={`w-4 h-4 mt-0.5 shrink-0 ${
-                      activeCategory === 'class' ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'
+                      activeCategory === 'class' ? 'text-white' : 'text-[#145343] dark:text-emerald-400'
                     }`}
                   />
                   <div>
                     <div className="text-xs font-bold leading-tight">Individual Class Routine</div>
                     <div
                       className={`text-[10px] mt-0.5 ${
-                        activeCategory === 'class' ? 'text-blue-100' : 'text-slate-500'
+                        activeCategory === 'class' ? 'text-emerald-100' : 'text-slate-500'
                       }`}
                     >
                       All sections of a selected class (e.g. Class 9 A, B, C)
@@ -387,20 +387,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => setActiveCategory('teacher')}
                   className={`w-full p-2.5 rounded-xl text-left transition-all border flex items-start gap-2.5 ${
                     activeCategory === 'teacher'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-[#145343] text-white border-[#145343] shadow-xs'
                       : 'bg-white dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <Users
                     className={`w-4 h-4 mt-0.5 shrink-0 ${
-                      activeCategory === 'teacher' ? 'text-white' : 'text-purple-600 dark:text-purple-400'
+                      activeCategory === 'teacher' ? 'text-white' : 'text-amber-600 dark:text-amber-400'
                     }`}
                   />
                   <div>
                     <div className="text-xs font-bold leading-tight">Individual Teacher Routine</div>
                     <div
                       className={`text-[10px] mt-0.5 ${
-                        activeCategory === 'teacher' ? 'text-blue-100' : 'text-slate-500'
+                        activeCategory === 'teacher' ? 'text-emerald-100' : 'text-slate-500'
                       }`}
                     >
                       Personal schedule & assigned classes for any teacher
@@ -414,20 +414,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => setActiveCategory('complete_school')}
                   className={`w-full p-2.5 rounded-xl text-left transition-all border flex items-start gap-2.5 ${
                     activeCategory === 'complete_school'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-[#145343] text-white border-[#145343] shadow-xs'
                       : 'bg-white dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <School
                     className={`w-4 h-4 mt-0.5 shrink-0 ${
-                      activeCategory === 'complete_school' ? 'text-white' : 'text-blue-600'
+                      activeCategory === 'complete_school' ? 'text-white' : 'text-[#145343] dark:text-emerald-400'
                     }`}
                   />
                   <div>
                     <div className="text-xs font-bold leading-tight">Complete School Routine</div>
                     <div
                       className={`text-[10px] mt-0.5 ${
-                        activeCategory === 'complete_school' ? 'text-blue-100' : 'text-slate-500'
+                        activeCategory === 'complete_school' ? 'text-emerald-100' : 'text-slate-500'
                       }`}
                     >
                       Master document containing all classes (Play - 10)
@@ -441,7 +441,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => setActiveCategory('all_teachers')}
                   className={`w-full p-2.5 rounded-xl text-left transition-all border flex items-start gap-2.5 ${
                     activeCategory === 'all_teachers'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-[#145343] text-white border-[#145343] shadow-xs'
                       : 'bg-white dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -454,7 +454,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <div className="text-xs font-bold leading-tight">All Teachers' Combined Book</div>
                     <div
                       className={`text-[10px] mt-0.5 ${
-                        activeCategory === 'all_teachers' ? 'text-blue-100' : 'text-slate-500'
+                        activeCategory === 'all_teachers' ? 'text-emerald-100' : 'text-slate-500'
                       }`}
                     >
                       Full faculty schedule with dedicated page per teacher
@@ -495,7 +495,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {(activeCategory === 'section' || activeCategory === 'class') && (
               <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                  <BookOpen className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                   <span>Choose Class & Section</span>
                 </div>
 
@@ -541,7 +541,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {activeCategory === 'teacher' && (
               <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-purple-600" />
+                  <Users className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   <span>Choose Teacher</span>
                 </div>
 
@@ -565,7 +565,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {activeCategory === 'complete_school' && (
               <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                 <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <Eye className="w-3.5 h-3.5 text-blue-600" />
+                  <Eye className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                   <span>Preview Page Inside Book</span>
                 </div>
                 <p className="text-[11px] text-slate-500">
@@ -613,8 +613,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             )}
 
             {/* Document specs callout */}
-            <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/40 text-[11px] space-y-1 text-slate-600 dark:text-slate-400">
-              <div className="font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1">
+            <div className="p-3 bg-[#eef5f2]/70 dark:bg-emerald-950/20 rounded-xl border border-[#bfd5cc] dark:border-emerald-900/40 text-[11px] space-y-1 text-slate-600 dark:text-slate-400">
+              <div className="font-bold text-[#145343] dark:text-emerald-300 flex items-center gap-1">
                 <Info className="w-3.5 h-3.5" />
                 <span>Export Standard Specifications</span>
               </div>
@@ -630,7 +630,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {/* Top Toolbar: Format Download Buttons */}
             <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4 text-blue-600 shrink-0" />
+                <Eye className="w-4 h-4 text-[#145343] dark:text-emerald-400 shrink-0" />
                 <div>
                   <div className="text-xs font-bold text-slate-900 dark:text-white">
                     Live Document Print Preview
@@ -649,10 +649,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       type="button"
                       disabled={isExporting}
                       onClick={handleDownloadDocx}
-                      className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 hover:border-blue-500 flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 disabled:opacity-50"
+                      className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 hover:border-[#145343] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 disabled:opacity-50"
                       title="Download as Microsoft Word document (.docx)"
                     >
-                      <FileText className="w-4 h-4 text-blue-600" />
+                      <FileText className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                       <span>Download Word (.docx)</span>
                     </button>
 
@@ -693,7 +693,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <div className="text-xs text-slate-600 font-medium mt-0.5">
                     Academic Session: {fullAppState.settings.academicYear} • Class Routine
                   </div>
-                  <div className="text-sm font-bold text-blue-900 mt-1 uppercase tracking-wide">
+                  <div className="text-sm font-bold text-[#145343] mt-1 uppercase tracking-wide">
                     {previewData.title}
                   </div>
                   <div className="text-[11px] text-slate-500 italic mt-0.5">

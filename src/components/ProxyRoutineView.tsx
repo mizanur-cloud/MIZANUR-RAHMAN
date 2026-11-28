@@ -129,7 +129,7 @@ const STATUS_BADGE_MAP: Record<
 > = {
   assigned: {
     label: 'নির্ধারিত (Assigned)',
-    cls: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200',
+    cls: 'bg-[#eef5f2] text-[#145343] dark:bg-emerald-950/60 dark:text-emerald-200',
   },
   completed: {
     label: 'সম্পন্ন (Completed)',
@@ -988,7 +988,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                   onClick={() => exportProxyDocx(exportPlan, settings, teachers)}
                   className="min-h-[38px] px-3 py-1.5 text-xs font-semibold text-stone-700 dark:text-slate-200 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 rounded-xl flex items-center gap-1.5"
                 >
-                  <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <FileText className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                   <span>Word (.docx)</span>
                 </button>
 
@@ -1174,11 +1174,11 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
             <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center justify-between">
               <div>
                 <div className="text-[11px] font-semibold text-stone-500 dark:text-slate-400">অটো-সাজেশন প্রস্তুত</div>
-                <div className="text-xl font-bold text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                <div className="text-xl font-bold text-[#145343] dark:text-emerald-400 font-mono mt-0.5">
                   {unsavedMatchableCount}
                 </div>
               </div>
-              <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
+              <Sparkles className="w-5 h-5 text-[#145343] dark:text-emerald-400 shrink-0" />
             </div>
 
             <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center justify-between">
@@ -1218,7 +1218,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                   <button
                     type="button"
                     onClick={handleAutoMatchReset}
-                    className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5"
+                    className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dcebe4] text-[#145343] dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Auto Match</span>
@@ -1408,9 +1408,9 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                                 effectiveMatchType === 'same_subject'
                                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
                                   : effectiveMatchType === 'same_department'
-                                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
                                   : effectiveMatchType === 'manual'
-                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
+                                  ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
                                   : 'bg-stone-100 text-stone-700 dark:bg-slate-800 dark:text-slate-300'
                               }`}
                             >
@@ -1544,12 +1544,12 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                                       {candidate.inlineLabel}
                                     </span>
                                     {candidate.isSameSubject && (
-                                      <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 text-[10px] font-bold">
+                                      <span className="px-1.5 py-0.5 rounded bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-200 text-[10px] font-bold">
                                         ★ একই বিষয়
                                       </span>
                                     )}
                                     {!candidate.isSameSubject && candidate.isSameDepartment && (
-                                      <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200 text-[10px] font-semibold">
+                                      <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-[10px] font-semibold">
                                         একই বিভাগ
                                       </span>
                                     )}
@@ -1621,7 +1621,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                                 busy.reasonCode === 'absent'
                                   ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
                                   : busy.reasonCode === 'exempt'
-                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
                                   : busy.reasonCode === 'daily_proxy_limit'
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
                                   : 'bg-stone-200 text-stone-700 dark:bg-slate-700 dark:text-slate-300'
@@ -1713,7 +1713,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                     </div>
                     <div>
                       <div className="text-stone-400 text-[10px]">প্রক্সি</div>
-                      <div className="font-bold font-mono text-blue-600 dark:text-blue-400">{w.proxyWeeklyPeriods}</div>
+                      <div className="font-bold font-mono text-[#145343] dark:text-emerald-400">{w.proxyWeeklyPeriods}</div>
                     </div>
                     <div>
                       <div className="text-stone-400 text-[10px]">মোট/লিমিট</div>
@@ -1757,7 +1757,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                         <td className="py-3 px-4 text-center font-mono font-semibold text-stone-800 dark:text-slate-200">
                           {w.regularWeeklyPeriods}
                         </td>
-                        <td className="py-3 px-4 text-center font-mono font-bold text-blue-700 dark:text-blue-400">
+                        <td className="py-3 px-4 text-center font-mono font-bold text-[#145343] dark:text-emerald-400">
                           {w.proxyWeeklyPeriods}
                         </td>
                         <td className="py-3 px-4">
@@ -2008,7 +2008,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
             </div>
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-stone-200 dark:border-slate-800">
               <div className="text-[11px] font-semibold text-stone-500 dark:text-slate-400">Most Active Proxy Teacher</div>
-              <div className="text-sm font-bold text-blue-700 dark:text-blue-400 mt-1.5 truncate">
+              <div className="text-sm font-bold text-[#145343] dark:text-emerald-400 mt-1.5 truncate">
                 {reportKpis.mostActiveName}
               </div>
             </div>
@@ -2193,7 +2193,7 @@ export const ProxyRoutineView: React.FC<ProxyRoutineViewProps> = ({
                                 ? 'text-stone-400'
                                 : log.status === 'completed'
                                 ? 'text-emerald-700 dark:text-emerald-300'
-                                : 'text-blue-700 dark:text-blue-300'
+                                : 'text-[#145343] dark:text-emerald-300'
                             }`}
                           >
                             <option value="assigned">Assigned</option>

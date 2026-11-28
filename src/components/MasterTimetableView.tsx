@@ -273,7 +273,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                       teacherUtilizationPct > 90
                         ? 'bg-amber-500'
                         : teacherUtilizationPct > 60
-                        ? 'bg-purple-600'
+                        ? 'bg-[#145343] dark:bg-emerald-500'
                         : 'bg-emerald-600'
                     }`}
                     style={{ width: `${Math.min(100, teacherUtilizationPct)}%` }}
@@ -667,13 +667,13 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                         }
                                       }}
                                       className={`p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left transition-all h-11 flex flex-col justify-between ${
-                                        readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                        readOnly ? 'cursor-default' : 'hover:border-[#145343] dark:hover:border-emerald-500 cursor-pointer'
                                       }`}
                                     >
                                       <div className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 truncate flex items-center gap-1">
                                         <span
                                           className="w-1.5 h-1.5 rounded-full shrink-0"
-                                          style={{ backgroundColor: sub?.color || '#3B82F6' }}
+                                          style={{ backgroundColor: sub?.color || '#145343' }}
                                         />
                                         <span className="truncate">{sub?.name || 'Class'}</span>
                                       </div>
@@ -690,8 +690,8 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                       onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex);
                                     }
                                   }}
-                                  className={`p-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-left transition-all min-h-11 flex flex-col justify-center gap-0.5 ${
-                                    readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                  className={`p-1 rounded-md border border-[#bfd5cc] dark:border-emerald-800 bg-[#eef5f2]/70 dark:bg-emerald-950/30 text-left transition-all min-h-11 flex flex-col justify-center gap-0.5 ${
+                                    readOnly ? 'cursor-default' : 'hover:border-[#145343] dark:hover:border-emerald-500 cursor-pointer'
                                   }`}
                                 >
                                   {matches.map(m => {
@@ -718,7 +718,7 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                   onClick={() =>
                                     onOpenEditSlot(classObj.id, sectionId, selectedDay, period.periodIndex)
                                   }
-                                  className="h-11 rounded border border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-400 flex items-center justify-center text-slate-300 dark:text-slate-700 cursor-pointer text-[10px]"
+                                  className="h-11 rounded border border-dashed border-slate-200 dark:border-slate-800 hover:border-[#145343] dark:hover:border-emerald-500 flex items-center justify-center text-slate-300 dark:text-slate-700 cursor-pointer text-[10px]"
                                 >
                                   +
                                 </div>
@@ -775,10 +775,10 @@ export const MasterTimetableView: React.FC<MasterTimetableViewProps> = ({
                                     }
                                   }}
                                   className={`p-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left transition-all h-11 flex flex-col justify-between ${
-                                    readOnly ? 'cursor-default' : 'hover:border-blue-500 cursor-pointer'
+                                    readOnly ? 'cursor-default' : 'hover:border-[#145343] dark:hover:border-emerald-500 cursor-pointer'
                                   }`}
                                 >
-                                  <div className="font-semibold text-[10px] text-blue-700 dark:text-blue-300 truncate">
+                                  <div className="font-semibold text-[10px] text-[#145343] dark:text-emerald-300 truncate">
                                     {cls?.name} · {sec?.name}
                                   </div>
                                   <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate">

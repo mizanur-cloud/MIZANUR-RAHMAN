@@ -228,7 +228,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'login'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#145343] dark:text-emerald-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -246,7 +246,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'register'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#145343] dark:text-emerald-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -264,7 +264,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               }}
               className={`py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${
                 mode === 'reset'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
+                  ? 'bg-white dark:bg-slate-900 text-[#145343] dark:text-emerald-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -350,7 +350,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="যেমন: মো. করিম"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                 />
               </div>
             )}
@@ -367,7 +367,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="admin@school.edu"
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                 />
               </div>
             </div>
@@ -386,7 +386,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="কমপক্ষে ৬ অক্ষর"
-                    className="w-full pl-9 pr-9 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-9 pr-9 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#145343]"
                   />
                   <button
                     type="button"

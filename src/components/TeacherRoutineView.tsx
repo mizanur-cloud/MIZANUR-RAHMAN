@@ -40,6 +40,7 @@ import {
   getEffectiveSectionRequirements,
   isHinduReligionRoom,
   isHinduReligionSubject,
+  isTeacherBlockTeacher,
 } from '../services/parallelSubjects';
 
 interface TeacherRoutineViewProps {
@@ -314,7 +315,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                             {physicalPeriodCount}
                           </span>{' '}
                           পিরিয়ড (
-                          <span className="font-mono tabular-nums font-semibold text-indigo-700 dark:text-indigo-300">
+                          <span className="font-mono tabular-nums font-semibold text-amber-700 dark:text-amber-300">
                             {teacherEntries.length}
                             {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''}
                           </span>{' '}
@@ -477,7 +478,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                     placeholder="Search teacher by name or initials..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#145343]"
                   />
                 </div>
 
@@ -622,9 +623,13 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                           .join(', ')}
                       </span>
                       <span>·</span>
-                      <span>Max Consecutive: {selectedTeacher.maxConsecutivePeriods || 2}</span>
+                      <span>
+                        {isTeacherBlockTeacher(selectedTeacher, classes)
+                          ? 'ব্লক টিচার (একটানা সীমা মুক্ত)'
+                          : `Max Consecutive: ${selectedTeacher.maxConsecutivePeriods || 2}`}
+                      </span>
                       <span>·</span>
-                      <span>Max Days/Wk: {selectedTeacher.maxWorkingDays || 4}</span>
+                      <span>Max Days/Wk: {selectedTeacher.maxWorkingDays || 5}</span>
                     </div>
                   </div>
                 </div>
@@ -635,7 +640,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                     <div className="text-base font-mono font-bold text-slate-900 dark:text-white tabular-nums">
                       {physicalPeriodCount}
                       {teacherEntries.length > physicalPeriodCount ? (
-                        <span className="text-xs font-normal text-indigo-600 dark:text-indigo-400 ml-1">
+                        <span className="text-xs font-normal text-amber-700 dark:text-amber-400 ml-1">
                           ({teacherEntries.length}
                           {configuredTargetPeriods > 0 ? `/${configuredTargetPeriods}` : ''} sec)
                         </span>
@@ -1042,7 +1047,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                         <td className="py-3 px-4 text-slate-500 font-mono tabular-nums">
                           {period?.startTime} - {period?.endTime}
                         </td>
-                        <td className="py-3 px-4 font-semibold text-blue-700 dark:text-blue-400">
+                        <td className="py-3 px-4 font-semibold text-[#145343] dark:text-emerald-400">
                           {cls?.name || 'Class'}
                         </td>
                         <td className="py-3 px-4 font-medium text-slate-800 dark:text-slate-200">
@@ -1052,7 +1057,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                           <div className="flex items-center gap-1.5">
                             <span
                               className="w-2 h-2 rounded-full shrink-0"
-                              style={{ backgroundColor: sub?.color || '#3B82F6' }}
+                              style={{ backgroundColor: sub?.color || '#145343' }}
                             />
                             <span className="font-semibold text-slate-800 dark:text-slate-200">
                               {sub?.name || 'Subject'}
@@ -1071,7 +1076,7 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                                   onOpenEditSlot(entry.classId, entry.sectionId, entry.day, entry.periodIndex)
                                 }
                                 title="Edit this entry"
-                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors"
+                                className="p-1.5 text-slate-500 hover:text-[#145343] dark:hover:text-emerald-300 hover:bg-[#eef5f2] dark:hover:bg-emerald-950/40 rounded transition-colors"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
@@ -1188,10 +1193,10 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                               } ${
                                 hasConflict
                                   ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
-                                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-[#145343] dark:hover:border-emerald-500'
                               }`}
                             >
-                              <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 truncate">
+                              <div className="text-[11px] font-bold text-[#145343] dark:text-emerald-300 truncate">
                                 {cls?.name} · {sec?.name}
                               </div>
                               <div className="text-[10px] text-slate-600 dark:text-slate-300 truncate flex items-center justify-between gap-1">
@@ -1242,11 +1247,11 @@ export const TeacherRoutineView: React.FC<TeacherRoutineViewProps> = ({
                               hasConflict
                                 ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
                                 : allHindu
-                                ? 'bg-indigo-50/70 dark:bg-indigo-950/35 border-indigo-200 dark:border-indigo-800 hover:border-indigo-400'
-                                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                ? 'bg-[#eef5f2]/80 dark:bg-emerald-950/35 border-[#bfd5cc] dark:border-emerald-800 hover:border-[#145343]'
+                                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-[#145343] dark:hover:border-emerald-500'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                            <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-[#145343] dark:text-emerald-300">
                               <span className="truncate">
                                 {allHindu ? `Combined ${slotMatches.length} Sec` : `${slotMatches.length} Classes`}
                               </span>

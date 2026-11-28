@@ -599,7 +599,9 @@ export function detectAllConflicts(
   };
 
   // 4. Check for Max Consecutive Classes per Teacher (on deduplicated physical teaching slots)
+  // Play & Nursery block teachers are exempt because they stay in their assigned shift across continuous periods.
   teachers.forEach(teacher => {
+    if (isTeacherBlockTeacher(teacher, classes)) return;
     const maxConsecutive = teacher.maxConsecutivePeriods || 2;
     workingDays.forEach(day => {
       const physicalDaySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, day);
@@ -764,7 +766,7 @@ export function detectAllConflicts(
       });
     }
 
-    if (pattern.fourPlusConsecDays.length > 0) {
+    if (!isBlockTch && pattern.fourPlusConsecDays.length > 0) {
       const sampleDay = pattern.fourPlusConsecDays[0];
       const daySlots = getPhysicalPeriodSlotsForTeacherDay(teacher.id, sampleDay);
       conflicts.push({

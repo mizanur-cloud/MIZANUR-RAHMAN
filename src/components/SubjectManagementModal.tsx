@@ -343,7 +343,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="p-2 rounded-xl bg-[#eef5f2] text-[#145343] dark:bg-emerald-950 dark:text-emerald-300">
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
@@ -430,7 +430,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                       }}
                       className={`w-full px-3 py-2 text-xs font-semibold rounded-lg text-left transition-colors flex items-center justify-between ${
                         isSelected
-                          ? 'bg-blue-600 text-white shadow-xs'
+                          ? 'bg-[#145343] text-white shadow-xs'
                           : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
@@ -438,7 +438,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                       <span
                         className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                           isSelected
-                            ? 'bg-blue-700 text-blue-100'
+                            ? 'bg-[#0f3f33] text-emerald-100'
                             : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}
                       >
@@ -457,7 +457,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <span>Subjects for {activeClass.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-semibold">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#eef5f2] dark:bg-emerald-950 text-[#145343] dark:text-emerald-300 font-semibold">
                       {activeClass.subjectRequirements.length} Subjects Configured
                     </span>
                   </h3>
@@ -482,7 +482,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                       setIsAddingGlobal(true);
                       setActiveTab('all_subjects');
                     }}
-                    className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 rounded-lg flex items-center gap-1.5 shrink-0"
+                    className="px-3 py-1.5 text-xs font-semibold text-[#145343] dark:text-emerald-300 bg-[#eef5f2] dark:bg-emerald-950/60 hover:bg-[#dfece6] border border-[#bfd5cc] dark:border-emerald-800 rounded-lg flex items-center gap-1.5 shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Create New Subject</span>
@@ -505,12 +505,12 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
 
               {/* Play & Nursery Block Teacher Notice OR Class Subject Table */}
               {isPlayNur ? (
-                <div className="p-6 rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/30 space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-bold text-indigo-950 dark:text-indigo-100">
-                    <BookOpen className="w-4 h-4 text-indigo-600" />
+                <div className="p-6 rounded-2xl border border-[#bfd5cc] dark:border-emerald-900 bg-[#eef5f2]/70 dark:bg-emerald-950/30 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-bold text-[#145343] dark:text-emerald-100">
+                    <BookOpen className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                     <span>{activeClass.name}: কোনো আলাদা সাবজেক্ট নেই (ব্লক টিচার সকল বিষয় পড়াবেন)</span>
                   </div>
-                  <p className="text-xs text-indigo-800 dark:text-indigo-200 leading-relaxed">
+                  <p className="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed">
                     স্কুলের নীতিমালা অনুযায়ী <strong>প্লে ও নার্সারি</strong> শ্রেণিতে কোনো আলাদা বিষয় থাকে না। প্রতিটি শ্রেণিতে শুধুমাত্র দুটি শিফট (<strong>মর্নিং শিফট ও ডে শিফট</strong>) রয়েছে এবং নির্ধারিত <strong>২ জন ব্লক টিচার</strong> সকল বিষয় পড়ান।
                   </p>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -520,7 +520,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                       return (
                         <span
                           key={bId}
-                          className="px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold text-indigo-900 dark:text-indigo-200"
+                          className="px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-[#bfd5cc] dark:border-emerald-800 text-xs font-semibold text-[#145343] dark:text-emerald-200"
                         >
                           ব্লক টিচার {idx + 1}: {t.name} ({t.initials})
                         </span>
@@ -531,9 +531,9 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
               ) : (
                 <>
                   {/* Add Subject to This Class Form */}
-                  <div className="p-4 rounded-xl border border-dashed border-blue-200 dark:border-blue-900/60 bg-blue-50/30 dark:bg-blue-950/20 space-y-3">
+                  <div className="p-4 rounded-xl border border-dashed border-[#bfd5cc] dark:border-emerald-900/60 bg-[#eef5f2]/40 dark:bg-emerald-950/20 space-y-3">
                     <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Plus className="w-3.5 h-3.5 text-blue-600" />
+                      <Plus className="w-3.5 h-3.5 text-[#145343] dark:text-emerald-400" />
                       <span>Add a Subject to {activeClass.name} (এই শ্রেণিতে বিষয় যুক্ত করুন)</span>
                     </div>
 
@@ -574,7 +574,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                           type="button"
                           onClick={handleAddSubjectToClass}
                           disabled={!addSubjectIdToClass}
-                          className="w-full px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1"
+                          className="w-full px-3 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1"
                         >
                           <Check className="w-3.5 h-3.5" />
                           <span>Add to Class</span>
@@ -610,8 +610,8 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                               onClick={() => setSelectedSectionScopeId(sec.id)}
                               className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${
                                 isSecActive
-                                  ? 'bg-blue-700 text-white border-blue-700'
-                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                  ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
+                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-[#145343]'
                               }`}
                             >
                               {sec.name}
@@ -799,13 +799,13 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                           type="checkbox"
                                           checked={isSecSelected}
                                           onChange={toggleSecSubject}
-                                          className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 shrink-0"
+                                          className="w-3.5 h-3.5 rounded text-[#145343] border-slate-300 shrink-0"
                                           title="এই সেকশনে বিষয়টি চালু/বন্ধ করুন"
                                         />
                                       )}
                                       <span
                                         className="w-2.5 h-2.5 rounded-full shrink-0"
-                                        style={{ backgroundColor: subject?.color || '#3B82F6' }}
+                                        style={{ backgroundColor: subject?.color || '#145343' }}
                                       />
                                       <div>
                                         <span className="font-semibold text-slate-900 dark:text-slate-100">
@@ -889,7 +889,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                         className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border transition-colors disabled:opacity-40 ${
                                           !effectiveFixedPeriods || effectiveFixedPeriods.length === 0
                                             ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900'
-                                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500'
                                         }`}
                                       >
                                         যেকোনো
@@ -905,8 +905,8 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                             title={`${tp.label} (${tp.startTime} - ${tp.endTime})`}
                                             className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border transition-colors disabled:opacity-40 ${
                                               isPinned
-                                                ? 'bg-blue-700 text-white border-blue-700'
-                                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                                                ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
+                                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500'
                                             }`}
                                           >
                                             P{tp.periodIndex}
@@ -934,7 +934,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                                         <span>মুছুন</span>
                                       </button>
                                     ) : (
-                                      <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                                      <span className="text-[10px] font-medium text-[#145343] dark:text-emerald-400">
                                         {scopedSection.name}
                                       </span>
                                     )}
@@ -979,7 +979,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                     setNewSubColor('#3B82F6');
                     setNewSubFixedPeriods([]);
                   }}
-                  className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg flex items-center gap-1.5 shadow-xs shrink-0"
+                  className="px-3.5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg flex items-center gap-1.5 shadow-xs shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ নতুন বিষয় যোগ করুন</span>
@@ -991,10 +991,10 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
             {(isAddingGlobal || editingSubject) && (
               <form
                 onSubmit={handleSaveGlobalSubject}
-                className="p-4 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/30 space-y-3"
+                className="p-4 rounded-xl border border-[#bfd5cc] dark:border-emerald-900 bg-[#eef5f2]/60 dark:bg-emerald-950/30 space-y-3"
               >
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-blue-900 dark:text-blue-200 uppercase tracking-wider">
+                  <h4 className="text-xs font-bold text-[#145343] dark:text-emerald-200 uppercase tracking-wider">
                     {editingSubject ? `Edit Subject: ${editingSubject.name}` : 'Create Brand New Subject'}
                   </h4>
                   <button
@@ -1048,7 +1048,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                           type="button"
                           onClick={() => setNewSubColor(c)}
                           className={`w-5 h-5 rounded-full border transition-transform ${
-                            newSubColor === c ? 'scale-125 ring-2 ring-blue-500' : 'opacity-80'
+                            newSubColor === c ? 'scale-125 ring-2 ring-[#145343]' : 'opacity-80'
                           }`}
                           style={{ backgroundColor: c }}
                         />
@@ -1089,8 +1089,8 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                           }
                           className={`px-2 py-1 text-[11px] font-mono font-bold rounded-md border transition-colors ${
                             active
-                              ? 'bg-blue-700 text-white border-blue-700'
-                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-blue-400'
+                              ? 'bg-[#145343] text-white border-[#145343] dark:bg-emerald-700 dark:border-emerald-700'
+                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-emerald-500'
                           }`}
                         >
                           P{tp.periodIndex}
@@ -1113,7 +1113,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg shadow-xs"
                   >
                     {editingSubject ? 'Update Subject' : 'Save Subject'}
                   </button>
@@ -1162,7 +1162,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                             setNewSubFixedPeriods(sub.fixedPeriodIndices ? [...sub.fixedPeriodIndices] : []);
                           }}
                           title="Edit subject name or code"
-                          className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-[#145343] dark:hover:text-emerald-300 rounded transition-colors"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -1178,7 +1178,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
                     </div>
 
                     {sub.fixedPeriodIndices && sub.fixedPeriodIndices.length > 0 && (
-                      <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                      <div className="text-[10px] font-semibold text-[#145343] dark:text-emerald-400 flex items-center gap-1">
                         <Clock className="w-3 h-3 shrink-0" />
                         <span>
                           নির্দিষ্ট পিরিয়ড: {sub.fixedPeriodIndices.map(p => `P${p}`).join(', ')}
@@ -1204,7 +1204,7 @@ export const SubjectManagementModal: React.FC<SubjectManagementModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs"
+            className="px-5 py-2 text-xs font-semibold text-white bg-[#145343] hover:bg-[#0f3f33] dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg shadow-xs"
           >
             Done (সম্পন্ন)
           </button>

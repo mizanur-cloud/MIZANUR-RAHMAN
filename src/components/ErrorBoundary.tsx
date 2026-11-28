@@ -47,7 +47,7 @@ export class ErrorBoundary extends React.Component<
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
+              className="w-full py-2.5 px-4 bg-[#145343] hover:bg-[#0f3f33] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
               <span>পুনরায় লোড করুন</span>

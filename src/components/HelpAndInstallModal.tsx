@@ -92,11 +92,11 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
             onClick={() => setActiveSubTab('apk')}
             className={`flex items-center gap-2 py-3 px-3 text-sm font-semibold border-b-2 transition-all ${
               activeSubTab === 'apk'
-                ? 'border-blue-600 text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-900 rounded-t-lg -mb-px shadow-xs'
+                ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 bg-white dark:bg-slate-900 rounded-t-lg -mb-px shadow-xs'
                 : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Smartphone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <Smartphone className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
             <span>মোবাইল অ্যাপ (APK / PWA) ইনস্টল</span>
             <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
               Android & iOS
@@ -107,11 +107,11 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
             onClick={() => setActiveSubTab('usage')}
             className={`flex items-center gap-2 py-3 px-3 text-sm font-semibold border-b-2 transition-all ${
               activeSubTab === 'usage'
-                ? 'border-blue-600 text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-900 rounded-t-lg -mb-px shadow-xs'
+                ? 'border-[#145343] text-[#145343] dark:border-emerald-400 dark:text-emerald-400 bg-white dark:bg-slate-900 rounded-t-lg -mb-px shadow-xs'
                 : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <BookOpen className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
             <span>ওয়েবসাইট ব্যবহারের নিয়মাবলী (User Guide)</span>
           </button>
         </div>
@@ -123,16 +123,16 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
           {activeSubTab === 'apk' && (
             <div className="space-y-6">
               {/* Shareable Public Domain Link Card */}
-              <div className="p-4.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 space-y-3 shadow-xs">
+              <div className="p-4.5 rounded-2xl bg-[#eef5f2]/90 dark:bg-emerald-950/40 border border-[#bfd5cc] dark:border-emerald-800 space-y-3 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-[#145343] text-white flex items-center justify-center shadow-xs shrink-0">
                       <ExternalLink className="w-5 h-5" />
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                         <span>ওয়েবসাইটের পাবলিক ডোমেন লিংক (Public Live Domain)</span>
-                        <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 text-[10px] font-bold">
                           শেয়ারেবল
                         </span>
                       </h4>
@@ -147,7 +147,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                       className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs ${
                         copiedLink
                           ? 'bg-emerald-600 text-white'
-                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                          : 'bg-[#145343] hover:bg-[#0f3f33] text-white'
                       }`}
                     >
                       {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -157,7 +157,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                       href={publicDomainUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-slate-700 flex items-center gap-1.5"
+                      className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 text-[#145343] dark:text-emerald-300 border border-[#bfd5cc] dark:border-emerald-700 hover:bg-[#eef5f2] dark:hover:bg-slate-700 flex items-center gap-1.5"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>ওপেন</span>
@@ -165,7 +165,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200/70 dark:border-indigo-900 font-mono text-xs text-indigo-900 dark:text-indigo-200 select-all break-all flex items-center justify-between gap-2 shadow-2xs">
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-[#bfd5cc]/80 dark:border-emerald-900 font-mono text-xs text-[#145343] dark:text-emerald-200 select-all break-all flex items-center justify-between gap-2 shadow-2xs">
                   <span>{publicDomainUrl}</span>
                 </div>
               </div>
@@ -229,7 +229,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col justify-between">
                     <div>
-                      <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs mb-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-[#145343] text-white font-bold flex items-center justify-center text-xs mb-2.5">
                         ১
                       </div>
                       <h5 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
@@ -243,7 +243,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
 
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col justify-between">
                     <div>
-                      <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs mb-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-[#145343] text-white font-bold flex items-center justify-center text-xs mb-2.5">
                         ২
                       </div>
                       <h5 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
@@ -282,29 +282,29 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
               </div>
 
               {/* Standalone APK File Generation Info */}
-              <div className="p-4.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 space-y-3">
-                <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 font-bold text-sm">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="p-4.5 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/25 space-y-3">
+                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-bold text-sm">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                   <span>সরাসরি অফলাইন .APK প্যাকেজ ফাইল প্রয়োজন?</span>
                 </div>
-                <p className="text-xs text-indigo-800 dark:text-indigo-300">
+                <p className="text-xs text-amber-800 dark:text-amber-300">
                   যদি আপনি স্কুলের শিক্ষকদের মাঝে ব্লুটুথ বা পেনড্রাইভে সরাসরি ইনস্টলেবল <strong>.apk</strong> ফাইল শেয়ার করতে চান বা Google Play Store-এ তুলতে চান:
                 </p>
                 <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
                   <div className="flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5"></span>
                     <span>
-                      ১. মাইক্রোসফটের অফিসিয়াল ফ্রি টুল <strong>PWABuilder</strong> (<a href="https://www.pwabuilder.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline font-semibold inline-flex items-center gap-0.5">pwabuilder.com <ExternalLink className="w-3 h-3" /></a>) ভিজিট করুন।
+                      ১. মাইক্রোসফটের অফিসিয়াল ফ্রি টুল <strong>PWABuilder</strong> (<a href="https://www.pwabuilder.com" target="_blank" rel="noopener noreferrer" className="text-[#145343] dark:text-emerald-400 underline font-semibold inline-flex items-center gap-0.5">pwabuilder.com <ExternalLink className="w-3 h-3" /></a>) ভিজিট করুন।
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5"></span>
                     <span>
                       ২. এই ওয়েবসাইটের লিংকটি পেস্ট করে "Start" চাপুন। আমাদের সিস্টেমে ইতিমধ্যেই 100% ভ্যালিড PWA Manifest এবং সব সাইজের আইকন অন্তর্ভুক্ত রয়েছে।
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5"></span>
                     <span>
                       ৩. "Package for Android" অপশনে ক্লিক করলেই ১ ক্লিকে আপনার স্কুলের জন্য অফিশিয়াল সাইন্ড <strong>.apk</strong> ও <strong>.aab</strong> ফাইল জেনারেট হয়ে ডাউনলোড হয়ে যাবে!
                     </span>
@@ -324,7 +324,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                   </p>
                 </div>
                 <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-xs mb-1">
+                  <div className="flex items-center gap-2 text-[#145343] dark:text-emerald-400 font-semibold text-xs mb-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>অটোমেটিক আপডেট</span>
                   </div>
@@ -333,7 +333,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                   </p>
                 </div>
                 <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 font-semibold text-xs mb-1">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-xs mb-1">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     <span>কোনো মেমরি নষ্ট হয় না</span>
                   </div>
@@ -349,11 +349,11 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
           {activeSubTab === 'usage' && (
             <div className="space-y-6">
               
-              <div className="p-4 bg-blue-50/80 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800/50">
-                <h4 className="font-bold text-blue-900 dark:text-blue-100 text-sm">
+              <div className="p-4 bg-[#eef5f2]/80 dark:bg-emerald-950/30 rounded-xl border border-[#bfd5cc] dark:border-emerald-800/50">
+                <h4 className="font-bold text-[#145343] dark:text-emerald-100 text-sm">
                   আইকন ড্রিমস স্কুল অ্যান্ড কলেজ - স্মার্ট রুটিন ম্যানেজমেন্ট ব্যবহারের পূর্ণাঙ্গ নির্দেশিকা
                 </h4>
-                <p className="text-xs text-blue-800 dark:text-blue-300 mt-1">
+                <p className="text-xs text-emerald-900 dark:text-emerald-300 mt-1">
                   এই সফটওয়্যারটির মাধ্যমে আপনি ক্লাস ১-১০ এবং প্লে-নার্সারির সম্পূর্ণ রুটিন স্বয়ংক্রিয়ভাবে তৈরি, শিক্ষক বদলি (Proxy), কনফ্লিক্ট যাচাই এবং প্রিন্ট/ডাউনলোড করতে পারবেন। নিচে প্রধান ফিচারগুলোর ব্যবহারবিধি দেওয়া হলো:
                 </p>
               </div>
@@ -363,9 +363,9 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                 
                 {/* 1. Class Routine */}
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2">
-                  <div className="flex items-center gap-2.5 text-blue-700 dark:text-blue-400 font-bold text-sm">
-                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                      <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex items-center gap-2.5 text-[#145343] dark:text-emerald-400 font-bold text-sm">
+                    <div className="p-1.5 rounded-lg bg-[#eef5f2] dark:bg-emerald-900/50">
+                      <Calendar className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                     </div>
                     <span>১. শ্রেণিভিত্তিক রুটিন (Class Routines)</span>
                   </div>
@@ -376,9 +376,9 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
 
                 {/* 2. Teacher Routine */}
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2">
-                  <div className="flex items-center gap-2.5 text-indigo-700 dark:text-indigo-400 font-bold text-sm">
-                    <div className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
-                      <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <div className="flex items-center gap-2.5 text-teal-700 dark:text-teal-400 font-bold text-sm">
+                    <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-teal-900/50">
+                      <Users className="w-4 h-4 text-teal-700 dark:text-teal-400" />
                     </div>
                     <span>২. শিক্ষকভিত্তিক রুটিন (Teacher Routines)</span>
                   </div>
@@ -389,9 +389,9 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
 
                 {/* 3. Master Timetable */}
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2">
-                  <div className="flex items-center gap-2.5 text-purple-700 dark:text-purple-400 font-bold text-sm">
-                    <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-                      <Grid3X3 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <div className="flex items-center gap-2.5 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                    <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+                      <Grid3X3 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     </div>
                     <span>৩. মাস্টার টাইমটেবিল (Master Timetable)</span>
                   </div>
@@ -454,9 +454,9 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
 
                 {/* 8. Export to Word & PDF */}
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2">
-                  <div className="flex items-center gap-2.5 text-blue-700 dark:text-blue-400 font-bold text-sm">
-                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                      <Download className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex items-center gap-2.5 text-[#145343] dark:text-emerald-400 font-bold text-sm">
+                    <div className="p-1.5 rounded-lg bg-[#eef5f2] dark:bg-emerald-900/50">
+                      <Download className="w-4 h-4 text-[#145343] dark:text-emerald-400" />
                     </div>
                     <span>৮. এক্সপোর্ট ও প্রিন্ট (Export Word / PDF)</span>
                   </div>
@@ -478,7 +478,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                         onClose();
                         onOpenAutoGenerate();
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
+                      className="px-3 py-1.5 rounded-lg bg-[#145343] text-white text-xs font-semibold hover:bg-[#0f3f33] transition"
                     >
                       Auto-Fill রুটিন
                     </button>
@@ -498,7 +498,7 @@ export const HelpAndInstallModal: React.FC<HelpAndInstallModalProps> = ({
                         onClose();
                         onOpenSmartImport();
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition"
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition"
                     >
                       ফাইল ইম্পোর্ট
                     </button>
